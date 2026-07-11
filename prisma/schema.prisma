@@ -1,0 +1,180 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CREDIT_CARD
+}
+
+enum StatementStatus {
+  PENDING
+  PROCESSING
+  PARSED
+  FAILED
+}
+
+enum TransactionStatus {
+  PENDING_REVIEW
+  CONFIRMED
+}
+
+enum AlertType {
+  OVERSPEND
+  SURPLUS
+  TRANSFER
+}
+
+enum TransferStatus {
+  SUGGESTED
+  ACCEPTED
+  DISMISSED
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  name                String               @default("You")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  accounts            Account[]
+  categories          Category[]
+  monthlyBudgets      MonthlyBudget[]
+  statements          Statement[]
+  transactions        Transaction[]
+  alerts              Alert[]
+  transferSuggestions TransferSuggestion[]
+  categorizationRules CategorizationRule[]
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  name         String
+  type         AccountType
+  currency     String        @default("USD")
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statements   Statement[]
+  transactions Transaction[]
+  transfersFrom TransferSuggestion[] @relation("TransferFrom")
+  transfersTo   TransferSuggestion[] @relation("TransferTo")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+}
+
+model Category {
+  id                  String               @id @default(cuid())
+  name                String
+  icon                String?
+  color               String?
+  userId              String
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isDefault           Boolean              @default(false)
+  monthlyBudgets      MonthlyBudget[]
+  transactions        Transaction[]
+  categorizationRules CategorizationRule[]
+  alerts              Alert[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  @@unique([userId, name])
+}
+
+model MonthlyBudget {
+  id           String   @id @default(cuid())
+  month        String
+  targetAmount Float
+  categoryId   String
+  category     Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([categoryId, month, userId])
+}
+
+model Statement {
+  id           String          @id @default(cuid())
+  fileName     String
+  filePath     String
+  mimeType     String
+  status       StatementStatus @default(PENDING)
+  accountId    String
+  account      Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  periodStart  DateTime?
+  periodEnd    DateTime?
+  rawText      String?
+  errorMessage String?
+  uploadedAt   DateTime        @default(now())
+  transactions Transaction[]
+}
+
+model Transaction {
+  id          String            @id @default(cuid())
+  date        DateTime
+  description String
+  amount      Float
+  categoryId  String?
+  category    Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  accountId   String
+  account     Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  statementId String?
+  statement   Statement?        @relation(fields: [statementId], references: [id], onDelete: SetNull)
+  status      TransactionStatus @default(PENDING_REVIEW)
+  confidence  Float?
+  userId      String
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dedupeHash  String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([userId, dedupeHash])
+}
+
+model CategorizationRule {
+  id         String   @id @default(cuid())
+  pattern    String
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, pattern])
+}
+
+model Alert {
+  id         String    @id @default(cuid())
+  type       AlertType
+  message    String
+  month      String
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isRead     Boolean   @default(false)
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+}
+
+model TransferSuggestion {
+  id            String         @id @default(cuid())
+  fromAccountId String
+  fromAccount   Account        @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
+  toAccountId   String
+  toAccount     Account        @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: Cascade)
+  amount        Float
+  reason        String
+  status        TransferStatus @default(SUGGESTED)
+  month         String
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime       @default(now())
+}
