@@ -1,18 +1,19 @@
+import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
 const DEFAULT_USER_NAME = "You";
 
+/** Resolve the authenticated Clerk identity to this app's local data owner. */
 export async function getDefaultUser() {
-  const existing = await prisma.user.findFirst({
-    orderBy: { createdAt: "asc" },
-  });
-
-  if (existing) {
-    return existing;
+  const { userId } = await auth();
+  if (!userId) {
+    throw new Error("Unauthenticated request");
   }
 
-  return prisma.user.create({
-    data: { name: DEFAULT_USER_NAME },
+  return prisma.user.upsert({
+    where: { clerkId: userId },
+    create: { clerkId: userId, name: DEFAULT_USER_NAME },
+    update: {},
   });
 }
 
@@ -25,11 +26,32 @@ export async function ensureDefaultData(userId: string) {
   if (accountCount === 0) {
     await prisma.account.createMany({
       data: [
-        { name: "Main Checking", type: "CHECKING", userId },
+        {
+          name: "Main Checking",
+          type: "CHECKING",
+          userId,
+          isTransferSource: true,
+        },
         { name: "Savings", type: "SAVINGS", userId },
         { name: "Credit Card", type: "CREDIT_CARD", userId },
       ],
     });
+  } else {
+    const sourceCount = await prisma.account.count({
+      where: { userId, isTransferSource: true },
+    });
+    if (sourceCount === 0) {
+      const checking = await prisma.account.findFirst({
+        where: { userId, type: "CHECKING" },
+        orderBy: { createdAt: "asc" },
+      });
+      if (checking) {
+        await prisma.account.update({
+          where: { id: checking.id },
+          data: { isTransferSource: true },
+        });
+      }
+    }
   }
 
   if (categoryCount === 0) {

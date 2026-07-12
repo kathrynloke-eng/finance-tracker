@@ -35,14 +35,14 @@ export default async function BudgetsPage() {
           Monthly category targets
         </h2>
         <p className="mt-2 max-w-2xl text-slate-600">
-          Set how much you plan to spend in each category. The dashboard will alert
-          you when you overspend or stay well under budget.
+          Set how much you plan to spend each month, or mark a category as a
+          reserve to allocate monthly and only draw when needed.
         </p>
       </div>
 
       <SectionCard
-        title="Category budgets"
-        description="Targets apply to the current month and can be updated any time."
+        title="Set target expenses"
+        description="Add custom categories, set monthly spend targets or reserves, then save."
       >
         <BudgetEditor
           month={month}

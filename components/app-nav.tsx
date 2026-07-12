@@ -1,3 +1,4 @@
+import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 
 const links = [
@@ -5,6 +6,7 @@ const links = [
   { href: "/upload", label: "Upload", icon: "📄" },
   { href: "/transactions", label: "Transactions", icon: "💳" },
   { href: "/budgets", label: "Budgets", icon: "🎯" },
+  { href: "/accounts", label: "Accounts", icon: "🏦" },
 ];
 
 export function AppNav() {
@@ -28,6 +30,7 @@ export function AppNav() {
               {link.label}
             </Link>
           ))}
+          <UserButton />
         </nav>
       </div>
     </header>

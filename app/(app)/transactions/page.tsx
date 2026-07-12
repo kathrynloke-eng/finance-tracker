@@ -1,32 +1,45 @@
 import { getDefaultUser, ensureDefaultData } from "@/lib/user";
 import { prisma } from "@/lib/prisma";
-import { SectionCard } from "@/components/ui";
-import { TransactionReview } from "@/components/transaction-review";
+import { materializeDueRecurringTransactions } from "@/lib/recurring";
+import { serializeRecurring } from "@/lib/recurring";
+import type { RecurrenceFrequency } from "@/lib/recurring";
+import { TransactionsPageClient } from "@/components/transactions-page-client";
 
 export default async function TransactionsPage() {
   const user = await getDefaultUser();
   await ensureDefaultData(user.id);
+  await materializeDueRecurringTransactions(user.id);
 
-  const [transactions, categories] = await Promise.all([
+  const [transactions, categories, accounts, recurring] = await Promise.all([
     prisma.transaction.findMany({
       where: { userId: user.id },
-      include: { category: true },
+      include: { category: true, account: true },
       orderBy: { date: "desc" },
-      take: 100,
+      take: 200,
     }),
     prisma.category.findMany({
       where: { userId: user.id },
       orderBy: { name: "asc" },
     }),
+    prisma.account.findMany({
+      where: { userId: user.id },
+      orderBy: { name: "asc" },
+    }),
+    prisma.recurringTransaction.findMany({
+      where: { userId: user.id },
+      include: { category: true, account: true },
+      orderBy: [{ isActive: "desc" }, { nextOccurrence: "asc" }],
+    }),
   ]);
 
-  const serializedTransactions = transactions.map((transaction) => ({
-    id: transaction.id,
-    date: transaction.date.toISOString(),
-    description: transaction.description,
-    amount: transaction.amount,
-    status: transaction.status,
-    category: transaction.category,
+  const serializedCategories = categories.map((category) => ({
+    id: category.id,
+    name: category.name,
+  }));
+  const serializedAccounts = accounts.map((account) => ({
+    id: account.id,
+    name: account.name,
+    type: account.type,
   }));
 
   return (
@@ -36,20 +49,40 @@ export default async function TransactionsPage() {
           Transactions
         </h2>
         <p className="mt-2 max-w-2xl text-slate-600">
-          Review imported transactions and fix categories. The app learns from your
-          corrections for future statement uploads.
+          Add, edit, or delete transactions. Set recurring templates for rent,
+          salary, and subscriptions — due items post automatically.
         </p>
       </div>
 
-      <SectionCard
-        title="Imported activity"
-        description="Low-confidence matches are marked for review."
-      >
-        <TransactionReview
-          transactions={serializedTransactions}
-          categories={categories}
-        />
-      </SectionCard>
+      <TransactionsPageClient
+        transactions={transactions.map((transaction) => ({
+          id: transaction.id,
+          date: transaction.date.toISOString(),
+          description: transaction.description,
+          amount: transaction.amount,
+          status: transaction.status,
+          accountId: transaction.accountId,
+          recurringTransactionId: transaction.recurringTransactionId,
+          category: transaction.category
+            ? { id: transaction.category.id, name: transaction.category.name }
+            : null,
+          account: transaction.account
+            ? {
+                id: transaction.account.id,
+                name: transaction.account.name,
+                type: transaction.account.type,
+              }
+            : null,
+        }))}
+        recurring={recurring.map((rule) =>
+          serializeRecurring({
+            ...rule,
+            frequency: rule.frequency as RecurrenceFrequency,
+          }),
+        )}
+        categories={serializedCategories}
+        accounts={serializedAccounts}
+      />
     </div>
   );
 }

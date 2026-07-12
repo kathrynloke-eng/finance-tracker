@@ -1,71 +1,48 @@
 import { prisma } from "@/lib/prisma";
-import { getMonthlySummary } from "@/lib/budget";
+import { getFundingPlan } from "@/lib/funding";
 
 export async function generateTransferSuggestions(userId: string, month: string) {
-  const summary = await getMonthlySummary(userId, month);
-
-  const accounts = await prisma.account.findMany({
-    where: { userId },
-  });
-
-  const checking = accounts.find((account) => account.type === "CHECKING");
-  const savings = accounts.find((account) => account.type === "SAVINGS");
-  const creditCard = accounts.find((account) => account.type === "CREDIT_CARD");
-
-  if (!checking) return [];
+  const plan = await getFundingPlan(userId, month);
 
   await prisma.transferSuggestion.deleteMany({
     where: { userId, month, status: "SUGGESTED" },
   });
 
-  const suggestions: Array<{
-    userId: string;
-    month: string;
-    fromAccountId: string;
-    toAccountId: string;
-    amount: number;
-    reason: string;
-  }> = [];
+  // Replace prior transfer alerts so regenerations don't stack duplicates.
+  await prisma.alert.deleteMany({
+    where: { userId, month, type: "TRANSFER" },
+  });
 
-  const creditCardSpend = summary.categories.reduce((sum, category) => sum + category.spent, 0);
+  if (!plan.sourceAccount || plan.transfers.length === 0) {
+    return [];
+  }
 
-  if (creditCard && creditCardSpend > 0) {
-    suggestions.push({
+  const suggestions = plan.transfers.map((transfer) => ({
+    userId,
+    month,
+    fromAccountId: transfer.fromAccountId,
+    toAccountId: transfer.toAccountId,
+    amount: transfer.amount,
+    reason:
+      transfer.categoryNames.length > 0
+        ? transfer.basis === "budget"
+          ? `Allocate ${transfer.categoryNames.join(", ")} to ${transfer.toAccountName} ($${transfer.amount.toFixed(2)} reserved this month).`
+          : transfer.basis === "mixed"
+            ? `Fund ${transfer.categoryNames.join(", ")} via ${transfer.toAccountName} ($${transfer.amount.toFixed(2)} from spend + reserves).`
+            : `Cover ${transfer.categoryNames.join(", ")} via ${transfer.toAccountName} ($${transfer.amount.toFixed(2)} spent).`
+        : `Transfer $${transfer.amount.toFixed(2)} to ${transfer.toAccountName} for mapped categories.`,
+  }));
+
+  await prisma.transferSuggestion.createMany({ data: suggestions });
+
+  await prisma.alert.create({
+    data: {
       userId,
       month,
-      fromAccountId: checking.id,
-      toAccountId: creditCard.id,
-      amount: Math.round(creditCardSpend * 100) / 100,
-      reason: `Pay credit card balance from checking based on $${creditCardSpend.toFixed(2)} in monthly expenses.`,
-    });
-  }
-
-  if (savings && summary.totalVariance < 0) {
-    const surplus = Math.abs(summary.totalVariance);
-    if (surplus >= 50) {
-      suggestions.push({
-        userId,
-        month,
-        fromAccountId: checking.id,
-        toAccountId: savings.id,
-        amount: Math.round(surplus * 100) / 100,
-        reason: `Move surplus to savings — you are $${surplus.toFixed(2)} under total budget.`,
-      });
-    }
-  }
-
-  if (suggestions.length > 0) {
-    await prisma.transferSuggestion.createMany({ data: suggestions });
-
-    await prisma.alert.create({
-      data: {
-        userId,
-        month,
-        type: "TRANSFER",
-        message: `${suggestions.length} transfer suggestion${suggestions.length > 1 ? "s" : ""} ready for review.`,
-      },
-    });
-  }
+      type: "TRANSFER",
+      message: `${suggestions.length} transfer suggestion${suggestions.length > 1 ? "s" : ""} ready based on category → account mapping.`,
+    },
+  });
 
   return suggestions;
 }

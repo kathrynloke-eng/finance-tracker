@@ -42,10 +42,14 @@ export function UploadForm({ accounts }: UploadFormProps) {
         body: formData,
       });
 
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data.error ?? "Upload failed.");
+        throw new Error(
+          typeof data.error === "string"
+            ? data.error
+            : `Upload failed (${response.status}).`,
+        );
       }
 
       setStatus("success");

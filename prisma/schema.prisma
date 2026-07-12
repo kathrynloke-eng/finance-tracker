@@ -37,50 +37,70 @@ enum TransferStatus {
   DISMISSED
 }
 
+enum RecurrenceFrequency {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum CategoryBudgetStyle {
+  MONTHLY
+  RESERVE
+}
+
 model User {
-  id                  String               @id @default(cuid())
-  name                String               @default("You")
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  accounts            Account[]
-  categories          Category[]
-  monthlyBudgets      MonthlyBudget[]
-  statements          Statement[]
-  transactions        Transaction[]
-  alerts              Alert[]
-  transferSuggestions TransferSuggestion[]
-  categorizationRules CategorizationRule[]
+  id                    String                 @id @default(cuid())
+  clerkId               String?                @unique
+  name                  String                 @default("You")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  accounts              Account[]
+  categories            Category[]
+  monthlyBudgets        MonthlyBudget[]
+  statements            Statement[]
+  transactions          Transaction[]
+  alerts                Alert[]
+  transferSuggestions   TransferSuggestion[]
+  categorizationRules   CategorizationRule[]
+  recurringTransactions RecurringTransaction[]
 }
 
 model Account {
-  id           String        @id @default(cuid())
-  name         String
-  type         AccountType
-  currency     String        @default("USD")
-  userId       String
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  statements   Statement[]
-  transactions Transaction[]
-  transfersFrom TransferSuggestion[] @relation("TransferFrom")
-  transfersTo   TransferSuggestion[] @relation("TransferTo")
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id              String        @id @default(cuid())
+  name            String
+  type            AccountType
+  currency        String        @default("USD")
+  isTransferSource Boolean      @default(false)
+  userId          String
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statements            Statement[]
+  transactions          Transaction[]
+  recurringTransactions RecurringTransaction[]
+  fundedCategories      Category[]             @relation("CategoryFundingAccount")
+  transfersFrom         TransferSuggestion[]   @relation("TransferFrom")
+  transfersTo           TransferSuggestion[]   @relation("TransferTo")
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 }
 
 model Category {
-  id                  String               @id @default(cuid())
-  name                String
-  icon                String?
-  color               String?
-  userId              String
-  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
-  isDefault           Boolean              @default(false)
-  monthlyBudgets      MonthlyBudget[]
-  transactions        Transaction[]
-  categorizationRules CategorizationRule[]
-  alerts              Alert[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                    String                 @id @default(cuid())
+  name                  String
+  icon                  String?
+  color                 String?
+  userId                String
+  user                  User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isDefault             Boolean                @default(false)
+  budgetStyle           CategoryBudgetStyle    @default(MONTHLY)
+  fundingAccountId      String?
+  fundingAccount        Account?               @relation("CategoryFundingAccount", fields: [fundingAccountId], references: [id], onDelete: SetNull)
+  monthlyBudgets        MonthlyBudget[]
+  transactions          Transaction[]
+  recurringTransactions RecurringTransaction[]
+  categorizationRules   CategorizationRule[]
+  alerts                Alert[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
   @@unique([userId, name])
 }
@@ -118,25 +138,48 @@ model Statement {
 }
 
 model Transaction {
-  id          String            @id @default(cuid())
-  date        DateTime
-  description String
-  amount      Float
-  categoryId  String?
-  category    Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  accountId   String
-  account     Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  statementId String?
-  statement   Statement?        @relation(fields: [statementId], references: [id], onDelete: SetNull)
-  status      TransactionStatus @default(PENDING_REVIEW)
-  confidence  Float?
-  userId      String
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  dedupeHash  String?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id                     String                @id @default(cuid())
+  date                   DateTime
+  description            String
+  amount                 Float
+  categoryId             String?
+  category               Category?             @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  accountId              String
+  account                Account               @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  statementId            String?
+  statement              Statement?            @relation(fields: [statementId], references: [id], onDelete: SetNull)
+  recurringTransactionId String?
+  recurringTransaction   RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
+  status                 TransactionStatus     @default(PENDING_REVIEW)
+  confidence             Float?
+  userId                 String
+  user                   User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dedupeHash             String?
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
 
   @@unique([userId, dedupeHash])
+}
+
+model RecurringTransaction {
+  id             String              @id @default(cuid())
+  description    String
+  amount         Float
+  frequency      RecurrenceFrequency
+  interval       Int                 @default(1)
+  startDate      DateTime
+  endDate        DateTime?
+  nextOccurrence DateTime
+  isActive       Boolean             @default(true)
+  accountId      String
+  account        Account             @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId     String?
+  category       Category?           @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  userId         String
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
 }
 
 model CategorizationRule {
