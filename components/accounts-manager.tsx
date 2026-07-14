@@ -9,6 +9,8 @@ type Account = {
   name: string;
   type: "CHECKING" | "SAVINGS" | "CREDIT_CARD";
   isTransferSource: boolean;
+  transactionCount: number;
+  statementCount: number;
 };
 
 type Category = {
@@ -244,6 +246,21 @@ function AccountsManagerEditor({
       setAccountMessage("");
       return;
     }
+    const protectedRecords = [
+      account.transactionCount > 0
+        ? `${account.transactionCount} transaction${account.transactionCount === 1 ? "" : "s"}`
+        : null,
+      account.statementCount > 0
+        ? `${account.statementCount} statement record${account.statementCount === 1 ? "" : "s"}`
+        : null,
+    ].filter(Boolean);
+    if (protectedRecords.length > 0) {
+      setAccountError(
+        `“${account.name}” was not removed because it contains ${protectedRecords.join(" and ")}. Your records have not been changed. Statement records contain metadata only, never the uploaded PDF or its raw text.`,
+      );
+      setAccountMessage("");
+      return;
+    }
     setPendingRemove(account);
     clearFeedback();
   }
@@ -284,8 +301,12 @@ function AccountsManagerEditor({
       await refreshPlan();
       router.refresh();
     } catch (removeError) {
+      const message =
+        removeError instanceof Error ? removeError.message : "Remove failed.";
       setAccountError(
-        removeError instanceof Error ? removeError.message : "Remove failed.",
+        message === "Server error"
+          ? `“${account.name}” was not removed. It may still have transactions or imported statements, and your records have been kept safe.`
+          : message,
       );
     } finally {
       setBusy(false);

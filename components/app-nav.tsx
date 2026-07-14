@@ -1,4 +1,6 @@
-import { UserButton } from "@clerk/nextjs";
+"use client";
+
+import { useAuthActions } from "@convex-dev/auth/react";
 import Link from "next/link";
 
 const links = [
@@ -10,6 +12,7 @@ const links = [
 ];
 
 export function AppNav() {
+  const { signOut } = useAuthActions();
   return (
     <header className="border-b border-emerald-100 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
@@ -30,7 +33,7 @@ export function AppNav() {
               {link.label}
             </Link>
           ))}
-          <UserButton />
+          <button type="button" onClick={() => void signOut()} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 hover:bg-emerald-50 hover:text-emerald-800">Sign out</button>
         </nav>
       </div>
     </header>

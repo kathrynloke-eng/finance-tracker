@@ -122,7 +122,6 @@ model MonthlyBudget {
 model Statement {
   id           String          @id @default(cuid())
   fileName     String
-  filePath     String
   mimeType     String
   status       StatementStatus @default(PENDING)
   accountId    String
@@ -131,7 +130,6 @@ model Statement {
   user         User            @relation(fields: [userId], references: [id], onDelete: Cascade)
   periodStart  DateTime?
   periodEnd    DateTime?
-  rawText      String?
   errorMessage String?
   uploadedAt   DateTime        @default(now())
   transactions Transaction[]
