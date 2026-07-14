@@ -1,8 +1,11 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f8fffb;
-  --foreground: #0f172a;
+  --background: #ffffff;
+  --foreground: #1b2a33;
+  --surface: #fafafa;
+  --border: #d9d9d9;
+  --accent: #e5f23d;
 }
 
 @theme inline {
@@ -13,7 +16,14 @@
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at top right, rgb(229 242 61 / 0.14), transparent 26rem),
+    var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--foreground);
 }

@@ -14,10 +14,10 @@ const links = [
 export function AppNav() {
   const { signOut } = useAuthActions();
   return (
-    <header className="border-b border-emerald-100 bg-white/90 backdrop-blur">
+    <header className="border-b border-stone-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-600">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
             Monthly Finance
           </p>
           <h1 className="text-xl font-semibold text-slate-900">Finance Tracker</h1>
@@ -27,13 +27,13 @@ export function AppNav() {
             <Link
               key={link.href}
               href={link.href}
-              className="rounded-full border border-transparent px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-emerald-200 hover:bg-emerald-50 hover:text-emerald-800"
+              className="rounded-full border border-transparent px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-lime-300 hover:bg-lime-100 hover:text-slate-900"
             >
               <span className="mr-1.5">{link.icon}</span>
               {link.label}
             </Link>
           ))}
-          <button type="button" onClick={() => void signOut()} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 hover:bg-emerald-50 hover:text-emerald-800">Sign out</button>
+          <button type="button" onClick={() => void signOut()} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 hover:bg-lime-100 hover:text-slate-900">Sign out</button>
         </nav>
       </div>
     </header>

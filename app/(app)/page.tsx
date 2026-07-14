@@ -24,15 +24,15 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8 pb-4">
       <section className="relative overflow-hidden rounded-3xl bg-slate-950 px-6 py-7 text-white shadow-xl shadow-emerald-950/15 sm:px-8 sm:py-9">
-        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-lime-300/25 blur-3xl" />
         <div className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-cyan-300/10 blur-3xl" />
         <div className="relative flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
           <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-100">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-lime-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-lime-300" />
               Private monthly overview
             </div>
-            <p className="mt-5 text-sm font-medium text-emerald-200">
+            <p className="mt-5 text-sm font-medium text-lime-200">
               {formatMonthLabel(month)}
             </p>
             <h2 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
@@ -56,7 +56,7 @@ export default function DashboardPage() {
             </label>
             <Link
               href="/budgets"
-              className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-emerald-50"
+              className="rounded-xl bg-lime-300 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-lime-200"
             >
               Edit budgets
             </Link>
@@ -98,7 +98,7 @@ export default function DashboardPage() {
               {Math.round((summary.totalSpent / summary.totalBudget) * 100)}% of budget used
             </p>
           ) : (
-            <Link href="/budgets" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">
+            <Link href="/budgets" className="text-sm font-semibold text-slate-800 underline decoration-lime-300 decoration-2 underline-offset-4 hover:text-slate-950">
               Add a monthly target →
             </Link>
           )}
@@ -120,7 +120,7 @@ export default function DashboardPage() {
                 ? Math.min(100, (category.spent / category.target) * 100)
                 : 0;
               return (
-                <div key={String(category._id)} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 transition hover:border-emerald-100 hover:bg-emerald-50/30">
+                <div key={String(category._id)} className="rounded-xl border border-stone-200 bg-[#fafafa] p-4 transition hover:border-lime-300 hover:bg-lime-50/40">
                   <div className="flex items-start justify-between gap-4 text-sm">
                     <span className="font-semibold text-slate-900">{category.icon} {category.name}</span>
                     <span className="whitespace-nowrap font-medium text-slate-600">
