@@ -239,24 +239,9 @@ function AccountsManagerEditor({
   }
 
   function requestRemoveAccount(account: Account) {
-    if (account.isTransferSource) {
+    if (account.transactionCount > 0) {
       setAccountError(
-        "Pick another transfer source before removing this account.",
-      );
-      setAccountMessage("");
-      return;
-    }
-    const protectedRecords = [
-      account.transactionCount > 0
-        ? `${account.transactionCount} transaction${account.transactionCount === 1 ? "" : "s"}`
-        : null,
-      account.statementCount > 0
-        ? `${account.statementCount} statement record${account.statementCount === 1 ? "" : "s"}`
-        : null,
-    ].filter(Boolean);
-    if (protectedRecords.length > 0) {
-      setAccountError(
-        `“${account.name}” was not removed because it contains ${protectedRecords.join(" and ")}. Your records have not been changed. Statement records contain metadata only, never the uploaded PDF or its raw text.`,
+        `“${account.name}” was not removed because it contains ${account.transactionCount} transaction${account.transactionCount === 1 ? "" : "s"}. Your financial history has not been changed.`,
       );
       setAccountMessage("");
       return;
@@ -281,7 +266,17 @@ function AccountsManagerEditor({
         throw new Error(data.error ?? "Could not remove account.");
       }
 
-      setAccounts((current) => current.filter((item) => item.id !== account.id));
+      setAccounts((current) =>
+        current
+          .filter((item) => item.id !== account.id)
+          .map((item) => ({
+            ...item,
+            isTransferSource:
+              data.newTransferSourceId === null
+                ? item.isTransferSource
+                : item.id === data.newTransferSourceId,
+          })),
+      );
       setSavedCategories((current) =>
         current.map((category) =>
           category.fundingAccountId === account.id
@@ -297,7 +292,9 @@ function AccountsManagerEditor({
         ),
       );
       setPendingRemove(null);
-      setAccountMessage(`Removed account “${account.name}”.`);
+      setAccountMessage(
+        `Removed account “${account.name}”.${account.statementCount > 0 ? " Its statement metadata was removed too." : ""}`,
+      );
       await refreshPlan();
       router.refresh();
     } catch (removeError) {
@@ -305,7 +302,7 @@ function AccountsManagerEditor({
         removeError instanceof Error ? removeError.message : "Remove failed.";
       setAccountError(
         message === "Server error"
-          ? `“${account.name}” was not removed. It may still have transactions or imported statements, and your records have been kept safe.`
+          ? `“${account.name}” was not removed because it may still have transactions. Your financial history has been kept safe.`
           : message,
       );
     } finally {

@@ -38,7 +38,7 @@ export async function DELETE(request: NextRequest) {
     const id = request.nextUrl.searchParams.get("id");
     if (!id) return NextResponse.json({ error: "Account id is required." }, { status: 400 });
     const { client } = await overview();
-    await client.mutation(api.finance.deleteAccount, { id: id as Id<"accounts"> });
-    return NextResponse.json({ ok: true });
+    const result = await client.mutation(api.finance.deleteAccount, { id: id as Id<"accounts"> });
+    return NextResponse.json({ ok: true, newTransferSourceId: result.newTransferSourceId });
   } catch (error) { return errorResponse(error); }
 }

@@ -49,6 +49,19 @@ export default defineSchema({
     .index("by_user_month", ["userId", "month"])
     .index("by_category_month", ["categoryId", "month"]),
 
+  monthlySalaryPlans: defineTable({
+    userId: v.id("users"),
+    month: v.string(),
+    income: v.number(),
+    essentials: v.number(),
+    lifestyle: v.number(),
+    savings: v.number(),
+    investments: v.number(),
+    debtRepayment: v.number(),
+    giving: v.number(),
+    other: v.number(),
+  }).index("by_user_month", ["userId", "month"]),
+
   statements: defineTable({
     userId: v.id("users"),
     accountId: v.id("accounts"),

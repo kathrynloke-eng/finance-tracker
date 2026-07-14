@@ -20,6 +20,18 @@ export default function DashboardPage() {
     ? Math.min(100, (summary.totalSpent / summary.totalBudget) * 100)
     : 0;
   const isOverBudget = summary.totalVariance > 0;
+  const reserveCategories = summary.categories.filter(
+    (category) => category.budgetStyle === "RESERVE",
+  );
+  const reserveTarget = reserveCategories.reduce(
+    (total, category) => total + category.target,
+    0,
+  );
+  const reserveRecorded = reserveCategories.reduce(
+    (total, category) => total + category.spent,
+    0,
+  );
+  const reserveRemaining = Math.max(0, reserveTarget - reserveRecorded);
 
   return (
     <div className="space-y-8 pb-4">
@@ -111,9 +123,67 @@ export default function DashboardPage() {
         </div>
       </section>
 
+      <SectionCard
+        title="Reserve"
+        description="Monthly amounts you have set aside for future needs and goals."
+        action={
+          <Link
+            href="/budgets"
+            className="text-sm font-semibold text-slate-800 underline decoration-lime-300 decoration-2 underline-offset-4 hover:text-slate-950"
+          >
+            Manage reserves →
+          </Link>
+        }
+      >
+        {reserveCategories.length > 0 ? (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-lime-200 bg-lime-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Planned</p>
+                <p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(reserveTarget)}</p>
+              </div>
+              <div className="rounded-xl border border-stone-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Recorded</p>
+                <p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(reserveRecorded)}</p>
+              </div>
+              <div className="rounded-xl border border-stone-200 bg-white p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Left to set aside</p>
+                <p className="mt-1 text-xl font-semibold text-slate-900">{formatCurrency(reserveRemaining)}</p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {reserveCategories.map((category) => {
+                const progress = category.target
+                  ? Math.min(100, (category.spent / category.target) * 100)
+                  : 0;
+                return (
+                  <div key={String(category._id)} className="rounded-xl border border-stone-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-4 text-sm">
+                      <span className="font-semibold text-slate-900">{category.icon} {category.name}</span>
+                      <span className="whitespace-nowrap font-medium text-slate-600">
+                        {formatCurrency(category.spent)} <span className="text-slate-400">of</span> {formatCurrency(category.target)}
+                      </span>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100" aria-label={`${category.name} reserve progress`}>
+                      <div className="h-full rounded-full bg-lime-500" style={{ width: `${progress}%` }} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-9 text-center">
+            <p className="text-sm font-medium text-slate-700">No reserves for this month yet.</p>
+            <p className="mt-1 text-sm text-slate-500">Create a category with the Reserve type to start setting money aside.</p>
+          </div>
+        )}
+      </SectionCard>
+
       <SectionCard title="Spending by category" description="Monthly spending compared with the target you set.">
         <div className="space-y-3">
           {summary.categories
+            .filter((category) => category.budgetStyle === "MONTHLY")
             .filter((category) => category.target > 0 || category.spent > 0)
             .map((category) => {
               const percentage = category.target
@@ -136,7 +206,9 @@ export default function DashboardPage() {
                 </div>
               );
             })}
-          {summary.categories.every((category) => category.target === 0 && category.spent === 0) ? (
+          {summary.categories
+            .filter((category) => category.budgetStyle === "MONTHLY")
+            .every((category) => category.target === 0 && category.spent === 0) ? (
             <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
               <p className="text-sm font-medium text-slate-700">Your monthly overview will appear here.</p>
               <p className="mt-1 text-sm text-slate-500">Set a target and add transactions to see your progress.</p>

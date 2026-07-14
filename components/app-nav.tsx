@@ -8,6 +8,7 @@ const links = [
   { href: "/upload", label: "Upload", icon: "📄" },
   { href: "/transactions", label: "Transactions", icon: "💳" },
   { href: "/budgets", label: "Budgets", icon: "🎯" },
+  { href: "/allocation", label: "Plan", icon: "💰" },
   { href: "/accounts", label: "Accounts", icon: "🏦" },
 ];
 

@@ -44,12 +44,13 @@ export const overview = query({
   handler: async (ctx, { month }) => {
     const userId = await requireUser(ctx);
     if (!validMonth(month)) throw new Error("Invalid month.");
-    const [accounts, categories, budgets, transactions, statements] = await Promise.all([
+    const [accounts, categories, budgets, transactions, statements, salaryPlan] = await Promise.all([
       ctx.db.query("accounts").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("categories").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("monthlyBudgets").withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", month)).collect(),
       ctx.db.query("transactions").withIndex("by_user_date", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("statements").withIndex("by_user_uploaded", (q) => q.eq("userId", userId)).order("desc").collect(),
+      ctx.db.query("monthlySalaryPlans").withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", month)).unique(),
     ]);
     const start = Date.parse(`${month}-01T00:00:00.000Z`);
     const next = new Date(start); next.setUTCMonth(next.getUTCMonth() + 1);
@@ -81,6 +82,7 @@ export const overview = query({
       })),
       categories,
       budgets,
+      salaryPlan,
       statements: statements.slice(0, 5),
       transactions: transactions.sort((a, b) => b.date - a.date).slice(0, 200).map((item) => ({ ...item, category: item.categoryId ? byCategory.get(item.categoryId) ?? null : null, account: byAccount.get(item.accountId) ?? null })),
       summary: { totalSpent, totalBudget, totalVariance: totalSpent - totalBudget, categories: categoryRows },
@@ -117,27 +119,42 @@ export const deleteAccount = mutation({
   handler: async (ctx, { id }) => {
     const userId = await requireUser(ctx);
     const account = await ownedAccount(ctx, userId, id);
-    if (account.isTransferSource) {
-      throw new Error("Choose another transfer source before deleting this account.");
-    }
 
-    // Financial records must remain intact and attributable. An account can
-    // only be removed once its transactions and statement metadata are gone.
-    const [transactions, statements, categories] = await Promise.all([
+    // Transactions are financial history and must never be removed as a side
+    // effect of deleting an account. Statement rows only contain processing
+    // metadata, so they are safely removed when they have no transactions.
+    const [transactions, statements, categories, accounts, recurring] = await Promise.all([
       ctx.db.query("transactions").withIndex("by_user_date", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("statements").withIndex("by_user_uploaded", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("categories").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
+      ctx.db.query("accounts").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
+      ctx.db.query("recurringTransactions").withIndex("by_user_next_occurrence", (q) => q.eq("userId", userId)).collect(),
     ]);
-    if (transactions.some((transaction) => transaction.accountId === id) || statements.some((statement) => statement.accountId === id)) {
-      throw new Error("This account has transactions or statements. Remove or reassign those records before deleting the account.");
+    if (transactions.some((transaction) => transaction.accountId === id)) {
+      throw new Error("This account has transactions. Remove or reassign them before deleting the account.");
+    }
+    if (recurring.some((item) => item.accountId === id)) {
+      throw new Error("This account has recurring schedules. Remove or reassign them before deleting the account.");
     }
 
+    const nextTransferSource = account.isTransferSource
+      ? accounts.find((candidate) => candidate._id !== id)
+      : undefined;
     await Promise.all(
-      categories
-        .filter((category) => category.fundingAccountId === id)
-        .map((category) => ctx.db.patch(category._id, { fundingAccountId: undefined })),
+      [
+        ...categories
+          .filter((category) => category.fundingAccountId === id)
+          .map((category) => ctx.db.patch(category._id, { fundingAccountId: undefined })),
+        ...statements
+          .filter((statement) => statement.accountId === id)
+          .map((statement) => ctx.db.delete(statement._id)),
+        ...(nextTransferSource
+          ? [ctx.db.patch(nextTransferSource._id, { isTransferSource: true })]
+          : []),
+      ],
     );
     await ctx.db.delete(id);
+    return { newTransferSourceId: nextTransferSource?._id ?? null };
   },
 });
 
@@ -199,6 +216,57 @@ export const setBudget = mutation({
     const existing = await ctx.db.query("monthlyBudgets").withIndex("by_category_month", (q) => q.eq("categoryId", args.categoryId).eq("month", args.month)).first();
     if (existing) { if (existing.userId !== userId) throw new Error("Unauthorized"); await ctx.db.patch(existing._id, { targetAmount: args.targetAmount }); return existing._id; }
     return await ctx.db.insert("monthlyBudgets", { userId, categoryId: args.categoryId, month: args.month, targetAmount: args.targetAmount });
+  },
+});
+
+const salaryPlanArgs = {
+  month: v.string(),
+  income: v.number(),
+  essentials: v.number(),
+  lifestyle: v.number(),
+  savings: v.number(),
+  investments: v.number(),
+  debtRepayment: v.number(),
+  giving: v.number(),
+  other: v.number(),
+};
+
+export const saveSalaryPlan = mutation({
+  args: salaryPlanArgs,
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    if (!validMonth(args.month)) throw new Error("Invalid month.");
+    const values = [
+      args.income,
+      args.essentials,
+      args.lifestyle,
+      args.savings,
+      args.investments,
+      args.debtRepayment,
+      args.giving,
+      args.other,
+    ];
+    if (values.some((value) => !Number.isFinite(value) || value < 0 || value > 1_000_000_000)) {
+      throw new Error("Allocation amounts must be valid positive numbers.");
+    }
+    const existing = await ctx.db
+      .query("monthlySalaryPlans")
+      .withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", args.month))
+      .unique();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        income: args.income,
+        essentials: args.essentials,
+        lifestyle: args.lifestyle,
+        savings: args.savings,
+        investments: args.investments,
+        debtRepayment: args.debtRepayment,
+        giving: args.giving,
+        other: args.other,
+      });
+      return existing._id;
+    }
+    return await ctx.db.insert("monthlySalaryPlans", { userId, ...args });
   },
 });
 
