@@ -5,6 +5,7 @@ type StatCardProps = {
   value: string;
   hint?: string;
   tone?: "default" | "success" | "warning" | "danger";
+  compact?: boolean;
 };
 
 const toneClasses = {
@@ -14,12 +15,12 @@ const toneClasses = {
   danger: "border-rose-200 bg-rose-50 text-[#1b2a33]",
 };
 
-export function StatCard({ label, value, hint, tone = "default" }: StatCardProps) {
+export function StatCard({ label, value, hint, tone = "default", compact = false }: StatCardProps) {
   return (
-    <div className={`rounded-xl border p-5 shadow-sm ${toneClasses[tone]}`}>
-      <p className="text-sm font-medium text-slate-500">{label}</p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight">{value}</p>
-      {hint ? <p className="mt-2 text-sm text-slate-500">{hint}</p> : null}
+    <div className={`rounded-xl border shadow-sm ${compact ? "p-3 sm:p-5" : "p-5"} ${toneClasses[tone]}`}>
+      <p className={`${compact ? "text-xs sm:text-sm" : "text-sm"} font-medium text-slate-500`}>{label}</p>
+      <p className={`${compact ? "mt-1 text-lg sm:mt-2 sm:text-3xl" : "mt-2 text-3xl"} font-semibold tracking-tight`}>{value}</p>
+      {hint ? <p className={`${compact ? "mt-1 hidden text-sm sm:block sm:mt-2" : "mt-2 text-sm"} text-slate-500`}>{hint}</p> : null}
     </div>
   );
 }

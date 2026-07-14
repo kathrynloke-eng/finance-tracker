@@ -1,4 +1,4 @@
-import { getAuthUserId, invalidateSessions, modifyAccountCredentials } from "@convex-dev/auth/server";
+import { getAuthSessionId, getAuthUserId, invalidateSessions, modifyAccountCredentials, retrieveAccount } from "@convex-dev/auth/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { action, internalQuery, mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
@@ -48,6 +48,18 @@ function createTemporaryPassword() {
   return `FT-${value.slice(0, 5)}-${value.slice(5, 10)}-${value.slice(10, 15)}-${value.slice(15)}`;
 }
 
+function validateNewPassword(password: string) {
+  if (
+    password.length < 12 ||
+    password.length > 128 ||
+    !/[a-z]/.test(password) ||
+    !/[A-Z]/.test(password) ||
+    !/\d/.test(password)
+  ) {
+    throw new Error("Use 12–128 characters with uppercase, lowercase, and a number.");
+  }
+}
+
 export const current = query({
   args: {},
   handler: async (ctx) => {
@@ -88,6 +100,15 @@ export const getPasswordResetTarget = internalQuery({
   },
 });
 
+export const getCurrentPasswordAccount = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const user = await ctx.db.get(userId);
+    if (!user?.email) throw new Error("Password account not found.");
+    return { email: user.email };
+  },
+});
+
 export const adminResetPassword = action({
   args: { email: v.string() },
   handler: async (ctx, { email }) => {
@@ -104,6 +125,33 @@ export const adminResetPassword = action({
     });
     await invalidateSessions(ctx, { userId: target.userId });
     return { email: target.email, temporaryPassword };
+  },
+});
+
+export const changeOwnPassword = action({
+  args: { currentPassword: v.string(), newPassword: v.string() },
+  handler: async (ctx, { currentPassword, newPassword }) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Sign in to change your password.");
+    validateNewPassword(newPassword);
+    if (currentPassword === newPassword) {
+      throw new Error("Choose a new password that differs from your current password.");
+    }
+    const account = await ctx.runQuery(internal.users.getCurrentPasswordAccount, { userId });
+    const verified = await retrieveAccount(ctx, {
+      provider: "password",
+      account: { id: account.email, secret: currentPassword },
+    });
+    if (verified.user._id !== userId) throw new Error("Password account not found.");
+    await modifyAccountCredentials(ctx, {
+      provider: "password",
+      account: { id: account.email, secret: newPassword },
+    });
+    const sessionId = await getAuthSessionId(ctx);
+    await invalidateSessions(ctx, {
+      userId,
+      ...(sessionId ? { except: [sessionId] } : {}),
+    });
   },
 });
 

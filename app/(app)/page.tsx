@@ -8,6 +8,7 @@ import { formatCurrency, formatMonthLabel } from "@/lib/format";
 
 export default function DashboardPage() {
   const [month, setMonth] = useState(() => currentMonth());
+  const [mobileSection, setMobileSection] = useState<"overview" | "reserve" | "spending">("overview");
   const data = useFinanceOverview(month);
 
   if (!data) {
@@ -32,10 +33,12 @@ export default function DashboardPage() {
     0,
   );
   const reserveRemaining = Math.max(0, reserveTarget - reserveRecorded);
+  const showOnMobile = (section: "overview" | "reserve" | "spending") =>
+    mobileSection === section ? "block" : "hidden sm:block";
 
   return (
-    <div className="space-y-8 pb-4">
-      <section className="relative overflow-hidden rounded-3xl bg-slate-950 px-6 py-7 text-white shadow-xl shadow-emerald-950/15 sm:px-8 sm:py-9">
+    <div className="space-y-5 pb-4 sm:space-y-8">
+      <section className="relative overflow-hidden rounded-3xl bg-slate-950 px-5 py-6 text-white shadow-xl shadow-emerald-950/15 sm:px-8 sm:py-9">
         <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-lime-300/25 blur-3xl" />
         <div className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-cyan-300/10 blur-3xl" />
         <div className="relative flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
@@ -55,8 +58,8 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-end gap-2">
-            <label className="flex min-w-36 flex-col gap-1.5 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200 backdrop-blur">
+          <div className="flex w-full flex-wrap items-end gap-2 lg:w-auto">
+            <label className="flex min-w-36 flex-1 flex-col gap-1.5 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200 backdrop-blur lg:flex-none">
               View month
               <input
                 type="month"
@@ -68,13 +71,13 @@ export default function DashboardPage() {
             </label>
             <Link
               href="/budgets"
-              className="rounded-xl bg-lime-300 px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-lime-200"
+              className="flex-1 rounded-xl bg-lime-300 px-4 py-3 text-center text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-lime-200 lg:flex-none"
             >
               Edit budgets
             </Link>
             <Link
               href="/transactions"
-              className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+              className="flex-1 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-white/20 lg:flex-none"
             >
               Add transactions
             </Link>
@@ -82,10 +85,11 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Monthly spent" value={formatCurrency(summary.totalSpent)} hint="Confirmed and imported expenses" />
-        <StatCard label="Monthly budget" value={formatCurrency(summary.totalBudget)} hint="Spend targets for this month" tone="success" />
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <StatCard compact label="Monthly spent" value={formatCurrency(summary.totalSpent)} hint="Confirmed and imported expenses" />
+        <StatCard compact label="Monthly budget" value={formatCurrency(summary.totalBudget)} hint="Spend targets for this month" tone="success" />
         <StatCard
+          compact
           label="Budget variance"
           value={formatCurrency(Math.abs(summary.totalVariance))}
           hint={isOverBudget ? "Over monthly budget" : "Remaining in your budget"}
@@ -93,7 +97,26 @@ export default function DashboardPage() {
         />
       </div>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <div className="rounded-2xl border border-slate-200 bg-white p-1 shadow-sm sm:hidden" role="tablist" aria-label="Dashboard sections">
+        {[
+          ["overview", "Overview"],
+          ["reserve", "Reserves"],
+          ["spending", "Spending"],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={mobileSection === id}
+            onClick={() => setMobileSection(id as "overview" | "reserve" | "spending")}
+            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${mobileSection === id ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <section className={`${showOnMobile("overview")} rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6`}>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Budget health</p>
@@ -123,18 +146,19 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <SectionCard
-        title="Reserve"
-        description="Monthly amounts you have set aside for future needs and goals."
-        action={
-          <Link
-            href="/budgets"
-            className="text-sm font-semibold text-slate-800 underline decoration-lime-300 decoration-2 underline-offset-4 hover:text-slate-950"
-          >
-            Manage reserves →
-          </Link>
-        }
-      >
+      <div className={showOnMobile("reserve")}>
+        <SectionCard
+          title="Reserve"
+          description="Monthly amounts you have set aside for future needs and goals."
+          action={
+            <Link
+              href="/budgets"
+              className="text-sm font-semibold text-slate-800 underline decoration-lime-300 decoration-2 underline-offset-4 hover:text-slate-950"
+            >
+              Manage reserves →
+            </Link>
+          }
+        >
         {reserveCategories.length > 0 ? (
           <div className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
@@ -178,8 +202,10 @@ export default function DashboardPage() {
             <p className="mt-1 text-sm text-slate-500">Create a category with the Reserve type to start setting money aside.</p>
           </div>
         )}
-      </SectionCard>
+        </SectionCard>
+      </div>
 
+      <div className={showOnMobile("spending")}>
       <SectionCard title="Spending by category" description="Monthly spending compared with the target you set.">
         <div className="space-y-3">
           {summary.categories
@@ -216,6 +242,7 @@ export default function DashboardPage() {
           ) : null}
         </div>
       </SectionCard>
+      </div>
     </div>
   );
 }

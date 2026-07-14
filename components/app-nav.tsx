@@ -11,6 +11,7 @@ const links = [
   { href: "/budgets", label: "Budgets", icon: "🎯" },
   { href: "/allocation", label: "Plan", icon: "💰" },
   { href: "/accounts", label: "Accounts", icon: "🏦" },
+  { href: "/security", label: "Security", icon: "🔒" },
   { href: "/guide", label: "Guide", icon: "✨" },
 ];
 
