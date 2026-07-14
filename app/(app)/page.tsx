@@ -15,80 +15,132 @@ export default function DashboardPage() {
   }
 
   const { summary } = data;
+  const hasBudget = summary.totalBudget > 0;
+  const spendPercentage = hasBudget
+    ? Math.min(100, (summary.totalSpent / summary.totalBudget) * 100)
+    : 0;
+  const isOverBudget = summary.totalVariance > 0;
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-emerald-700">
-            {formatMonthLabel(month)} overview
-          </p>
-          <h2 className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">
-            Know where your money goes
-          </h2>
-          <p className="mt-2 max-w-2xl text-slate-600">
-            Track spending and monthly category targets. Only you can access this data.
-          </p>
+    <div className="space-y-8 pb-4">
+      <section className="relative overflow-hidden rounded-3xl bg-slate-950 px-6 py-7 text-white shadow-xl shadow-emerald-950/15 sm:px-8 sm:py-9">
+        <div className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-emerald-400/20 blur-3xl" />
+        <div className="absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-cyan-300/10 blur-3xl" />
+        <div className="relative flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold tracking-wide text-emerald-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+              Private monthly overview
+            </div>
+            <p className="mt-5 text-sm font-medium text-emerald-200">
+              {formatMonthLabel(month)}
+            </p>
+            <h2 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">
+              A calmer view of your money.
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
+              Review your monthly spending, compare it with your targets, and keep your financial history in one private place.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-36 flex-col gap-1.5 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 text-xs font-medium text-slate-200 backdrop-blur">
+              View month
+              <input
+                type="month"
+                value={month}
+                max={currentMonth()}
+                onChange={(event) => setMonth(event.target.value)}
+                className="bg-transparent text-sm font-semibold text-white outline-none [color-scheme:dark]"
+              />
+            </label>
+            <Link
+              href="/budgets"
+              className="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-emerald-50"
+            >
+              Edit budgets
+            </Link>
+            <Link
+              href="/upload"
+              className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              Upload statement
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-            View month
-            <input
-              type="month"
-              value={month}
-              max={currentMonth()}
-              onChange={(event) => setMonth(event.target.value)}
-              className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none ring-emerald-500 focus:ring-2"
-            />
-          </label>
-          <Link
-            href="/budgets"
-            className="rounded-xl border border-emerald-200 bg-white px-5 py-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-50"
-          >
-            Edit budgets
-          </Link>
-          <Link
-            href="/upload"
-            className="rounded-xl bg-emerald-600 px-5 py-3 text-sm font-semibold text-white hover:bg-emerald-700"
-          >
-            Upload statement
-          </Link>
-        </div>
-      </div>
+      </section>
 
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Monthly spent" value={formatCurrency(summary.totalSpent)} hint="Confirmed and imported expenses" />
-        <StatCard label="Monthly budget" value={formatCurrency(summary.totalBudget)} hint="Spend targets only" />
+        <StatCard label="Monthly budget" value={formatCurrency(summary.totalBudget)} hint="Spend targets for this month" tone="success" />
         <StatCard
           label="Budget variance"
           value={formatCurrency(Math.abs(summary.totalVariance))}
-          hint={summary.totalVariance > 0 ? "Over monthly budget" : "Under monthly budget"}
-          tone={summary.totalVariance > 0 ? "danger" : "success"}
+          hint={isOverBudget ? "Over monthly budget" : "Remaining in your budget"}
+          tone={isOverBudget ? "danger" : "success"}
         />
       </div>
 
-      <SectionCard title="Spending by category" description="Monthly spend compared to the target you set.">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Budget health</p>
+            <h3 className="mt-1 text-lg font-semibold text-slate-900">
+              {hasBudget
+                ? isOverBudget
+                  ? "You are above this month’s target"
+                  : "You are within this month’s target"
+                : "Set a budget to track your progress"}
+            </h3>
+          </div>
+          {hasBudget ? (
+            <p className={`text-sm font-semibold ${isOverBudget ? "text-rose-600" : "text-emerald-700"}`}>
+              {Math.round((summary.totalSpent / summary.totalBudget) * 100)}% of budget used
+            </p>
+          ) : (
+            <Link href="/budgets" className="text-sm font-semibold text-emerald-700 hover:text-emerald-800">
+              Add a monthly target →
+            </Link>
+          )}
+        </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-100" aria-label="Budget used">
+          <div
+            className={`h-full rounded-full transition-all ${isOverBudget ? "bg-rose-500" : "bg-emerald-500"}`}
+            style={{ width: `${spendPercentage}%` }}
+          />
+        </div>
+      </section>
+
+      <SectionCard title="Spending by category" description="Monthly spending compared with the target you set.">
         <div className="space-y-3">
           {summary.categories
             .filter((category) => category.target > 0 || category.spent > 0)
-            .map((category) => (
-              <div key={String(category._id)} className="rounded-xl border border-slate-100 p-4">
-                <div className="flex justify-between gap-4 text-sm">
-                  <span className="font-medium text-slate-900">{category.icon} {category.name}</span>
-                  <span className="text-slate-600">{formatCurrency(category.spent)} / {formatCurrency(category.target)}</span>
+            .map((category) => {
+              const percentage = category.target
+                ? Math.min(100, (category.spent / category.target) * 100)
+                : 0;
+              return (
+                <div key={String(category._id)} className="rounded-2xl border border-slate-100 bg-slate-50/60 p-4 transition hover:border-emerald-100 hover:bg-emerald-50/30">
+                  <div className="flex items-start justify-between gap-4 text-sm">
+                    <span className="font-semibold text-slate-900">{category.icon} {category.name}</span>
+                    <span className="whitespace-nowrap font-medium text-slate-600">
+                      {formatCurrency(category.spent)} <span className="text-slate-400">of</span> {formatCurrency(category.target)}
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white" aria-label={`${category.name} spending progress`}>
+                    <div
+                      className={`h-full rounded-full ${category.status === "OVER" ? "bg-rose-500" : "bg-emerald-500"}`}
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className={category.status === "OVER" ? "h-full bg-rose-500" : "h-full bg-emerald-500"}
-                    style={{ width: `${Math.min(100, category.target ? (category.spent / category.target) * 100 : 0)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              );
+            })}
           {summary.categories.every((category) => category.target === 0 && category.spent === 0) ? (
-            <p className="py-8 text-center text-sm text-slate-500">
-              Set a target and add transactions to see your progress.
-            </p>
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-5 py-10 text-center">
+              <p className="text-sm font-medium text-slate-700">Your monthly overview will appear here.</p>
+              <p className="mt-1 text-sm text-slate-500">Set a target and add transactions to see your progress.</p>
+            </div>
           ) : null}
         </div>
       </SectionCard>
