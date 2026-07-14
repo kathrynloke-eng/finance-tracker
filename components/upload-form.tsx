@@ -10,9 +10,10 @@ type Account = {
 
 type UploadFormProps = {
   accounts: Account[];
+  onImported?: () => void;
 };
 
-export function UploadForm({ accounts }: UploadFormProps) {
+export function UploadForm({ accounts, onImported }: UploadFormProps) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "uploading" | "success" | "error">(
@@ -55,6 +56,7 @@ export function UploadForm({ accounts }: UploadFormProps) {
       setStatus("success");
       setMessage(data.message);
       setFile(null);
+      onImported?.();
     } catch (error) {
       setStatus("error");
       setMessage(error instanceof Error ? error.message : "Upload failed.");

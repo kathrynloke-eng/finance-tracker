@@ -23,8 +23,8 @@ const steps = [
     title: "Add your spending",
     description:
       "Add transactions manually, or import a statement. Uploaded files are parsed for transactions and are not kept as raw files after processing.",
-    href: "/upload",
-    action: "Import a statement",
+    href: "/transactions",
+    action: "Add transactions",
   },
   {
     number: "04",

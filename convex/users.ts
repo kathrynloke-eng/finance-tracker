@@ -1,6 +1,11 @@
-import { getAuthUserId } from "@convex-dev/auth/server";
+import { getAuthUserId, invalidateSessions, modifyAccountCredentials } from "@convex-dev/auth/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { mutation, query } from "./_generated/server";
+import { action, internalQuery, mutation, query } from "./_generated/server";
+import { internal } from "./_generated/api";
+import { v } from "convex/values";
+import type { Id } from "./_generated/dataModel";
+
+type PasswordResetTarget = { userId: Id<"users">; email: string };
 
 const defaultCategories = [
   ["Food & Dining", "🍽️", "#f97316"],
@@ -23,6 +28,26 @@ export async function requireUser(ctx: QueryCtx | MutationCtx) {
   return userId;
 }
 
+function configuredAdminEmails() {
+  return new Set(
+    (process.env.ADMIN_EMAILS ?? "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function isConfiguredAdministrator(email: string | undefined) {
+  return Boolean(email && configuredAdminEmails().has(email.trim().toLowerCase()));
+}
+
+function createTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const values = crypto.getRandomValues(new Uint32Array(20));
+  const value = Array.from(values, (item) => alphabet[item % alphabet.length]).join("");
+  return `FT-${value.slice(0, 5)}-${value.slice(5, 10)}-${value.slice(10, 15)}-${value.slice(15)}`;
+}
+
 export const current = query({
   args: {},
   handler: async (ctx) => {
@@ -32,6 +57,53 @@ export const current = query({
       .query("profiles")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .unique();
+  },
+});
+
+export const isAdministrator = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) return false;
+    const user = await ctx.db.get(userId);
+    return isConfiguredAdministrator(user?.email);
+  },
+});
+
+export const getPasswordResetTarget = internalQuery({
+  args: { requesterId: v.id("users"), email: v.string() },
+  handler: async (ctx, { requesterId, email }) => {
+    const requester = await ctx.db.get(requesterId);
+    if (!isConfiguredAdministrator(requester?.email)) {
+      throw new Error("Administrator access is required.");
+    }
+    const target = await ctx.db
+      .query("users")
+      .withIndex("email", (q) => q.eq("email", email.trim()))
+      .unique();
+    if (!target?.email) {
+      throw new Error("No account was found for that email address.");
+    }
+    return { userId: target._id, email: target.email };
+  },
+});
+
+export const adminResetPassword = action({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const requesterId = await getAuthUserId(ctx);
+    if (!requesterId) throw new Error("Administrator access is required.");
+    const target: PasswordResetTarget = await ctx.runQuery(internal.users.getPasswordResetTarget, {
+      requesterId,
+      email,
+    });
+    const temporaryPassword = createTemporaryPassword();
+    await modifyAccountCredentials(ctx, {
+      provider: "password",
+      account: { id: target.email, secret: temporaryPassword },
+    });
+    await invalidateSessions(ctx, { userId: target.userId });
+    return { email: target.email, temporaryPassword };
   },
 });
 

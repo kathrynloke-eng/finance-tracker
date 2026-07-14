@@ -1,11 +1,12 @@
 "use client";
 
 import { useAuthActions } from "@convex-dev/auth/react";
+import { useQuery } from "convex/react";
 import Link from "next/link";
+import { api } from "@/convex/_generated/api";
 
 const links = [
   { href: "/", label: "Dashboard", icon: "📊" },
-  { href: "/upload", label: "Upload", icon: "📄" },
   { href: "/transactions", label: "Transactions", icon: "💳" },
   { href: "/budgets", label: "Budgets", icon: "🎯" },
   { href: "/allocation", label: "Plan", icon: "💰" },
@@ -15,6 +16,7 @@ const links = [
 
 export function AppNav() {
   const { signOut } = useAuthActions();
+  const isAdministrator = useQuery(api.users.isAdministrator);
   return (
     <header className="border-b border-stone-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-6 py-4">
@@ -35,6 +37,15 @@ export function AppNav() {
               {link.label}
             </Link>
           ))}
+          {isAdministrator ? (
+            <Link
+              href="/admin"
+              className="rounded-full border border-transparent px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-lime-300 hover:bg-lime-100 hover:text-slate-900"
+            >
+              <span className="mr-1.5">🛡️</span>
+              Admin
+            </Link>
+          ) : null}
           <button type="button" onClick={() => void signOut()} className="rounded-full px-3 py-2 text-sm font-medium text-slate-600 hover:bg-lime-100 hover:text-slate-900">Sign out</button>
         </nav>
       </div>

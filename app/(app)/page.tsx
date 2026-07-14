@@ -73,10 +73,10 @@ export default function DashboardPage() {
               Edit budgets
             </Link>
             <Link
-              href="/upload"
+              href="/transactions"
               className="rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
             >
-              Upload statement
+              Add transactions
             </Link>
           </div>
         </div>
