@@ -9,6 +9,11 @@ const accountType = v.union(
 );
 
 const budgetStyle = v.union(v.literal("MONTHLY"), v.literal("RESERVE"));
+const allocationExpenseGroup = v.union(
+  v.literal("ESSENTIALS"),
+  v.literal("LIFESTYLE"),
+  v.literal("GIVING"),
+);
 
 export default defineSchema({
   ...authTables,
@@ -35,6 +40,7 @@ export default defineSchema({
     color: v.optional(v.string()),
     isDefault: v.boolean(),
     budgetStyle,
+    allocationExpenseGroup: v.optional(allocationExpenseGroup),
     fundingAccountId: v.optional(v.id("accounts")),
   })
     .index("by_user", ["userId"])

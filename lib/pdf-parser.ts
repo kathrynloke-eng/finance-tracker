@@ -41,7 +41,9 @@ const FULL_DATE_PATTERNS = [
 ];
 
 const AMOUNT_TOKEN =
-  /\(?-?\$?\d{1,3}(?:,\d{3})*\.\d{2}\)?(?:\s*(?:CR|DR|DEBIT|CREDIT))?/gi;
+  /\(?\s*-?\s*(?:S\$|US\$|\$)?\s*\d{1,3}(?:,\d{3})*\.\d{2}\s*\)?(?:\s*(?:CR|DR|DEBIT|CREDIT))?/gi;
+
+const DATE_TOKEN = /\b(?:\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}|\d{4}[\/\-.]\d{1,2}[\/\-.]\d{1,2}|\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{2,4})\b/gi;
 
 function parseMonthToken(token: string): number | null {
   const key = token.toLowerCase().replace(/\./g, "");
@@ -93,7 +95,7 @@ function parseAmountToken(raw: string): number | null {
     /^\(.*\)$/.test(raw.trim());
   const isDebit = upper.includes("DR") || upper.includes("DEBIT");
 
-  const cleaned = raw.replace(/[$,()\s]/g, "").replace(/(CR|DR|DEBIT|CREDIT)/gi, "");
+  const cleaned = raw.replace(/(?:S\$|US\$|[$,()\s])/gi, "").replace(/(CR|DR|DEBIT|CREDIT)/gi, "");
   const amount = Number.parseFloat(cleaned);
   if (Number.isNaN(amount) || amount === 0) return null;
 
@@ -156,6 +158,12 @@ function cleanDescription(value: string): string {
     .trim();
 }
 
+function isNonTransactionDescription(description: string) {
+  return /^(ACCOUNT|STATEMENT|TOTAL|BALANCE|PAGE|PAYMENT DUE|MINIMUM PAYMENT|CREDIT LIMIT|OVERLIMIT|OPENING BALANCE|CLOSING BALANCE|PREVIOUS BALANCE|NEW BALANCE|AMOUNT DUE|INTEREST CHARGES?)/.test(
+    description.toUpperCase(),
+  );
+}
+
 function parseDayFirstLine(
   line: string,
   period: { year: number; month: number },
@@ -200,11 +208,7 @@ function parseDayFirstLine(
 
   // Skip obvious non-transaction rows.
   const upper = description.toUpperCase();
-  if (
-    /^(ACCOUNT|STATEMENT|TOTAL|BALANCE|PAGE|PAYMENT DUE|CREDIT LIMIT|OVERLIMIT)/.test(
-      upper,
-    )
-  ) {
+  if (isNonTransactionDescription(upper)) {
     return null;
   }
 
@@ -228,7 +232,7 @@ function parseDayFirstLine(
   return { date, description, amount };
 }
 
-function parseFullDateLine(line: string): ParsedTransaction | null {
+function parseFullDateLine(line: string, preferDayFirst: boolean): ParsedTransaction | null {
   const amountMatches = [...line.matchAll(AMOUNT_TOKEN)];
   if (amountMatches.length === 0) return null;
 
@@ -239,6 +243,21 @@ function parseFullDateLine(line: string): ParsedTransaction | null {
     const match = line.match(pattern);
     if (match) {
       date = parseFullDate(match);
+      if (
+        date &&
+        preferDayFirst &&
+        /^\d{1,2}[\/\-.]\d{1,2}[\/\-.]\d{2,4}$/.test(match[0])
+      ) {
+        const [dayToken, monthToken, yearToken] = match[0].split(/[\/\-.]/);
+        const day = Number(dayToken);
+        const month = Number(monthToken);
+        let year = Number(yearToken);
+        if (year < 100) year += 2000;
+        const dayFirstDate = new Date(year, month - 1, day);
+        if (dayFirstDate.getFullYear() === year && dayFirstDate.getMonth() === month - 1 && dayFirstDate.getDate() === day) {
+          date = dayFirstDate;
+        }
+      }
       dateMatch = match;
       break;
     }
@@ -252,14 +271,40 @@ function parseFullDateLine(line: string): ParsedTransaction | null {
 
   const description = cleanDescription(
     line
-      .replace(dateMatch[0], " ")
+      .replace(DATE_TOKEN, " ")
       .replace(AMOUNT_TOKEN, " ")
       .replace(/\s+/g, " ")
       .trim(),
   );
 
-  if (description.length < 2) return null;
+  if (description.length < 2 || isNonTransactionDescription(description)) return null;
 
+  return { date, description, amount };
+}
+
+function parseShortDateLine(
+  line: string,
+  period: { year: number; month: number },
+  preferDayFirst: boolean,
+): ParsedTransaction | null {
+  const match = line.match(/^(\d{1,2})[\/\-.](\d{1,2})\s+(.+)$/);
+  if (!match) return null;
+  const first = Number(match[1]);
+  const second = Number(match[2]);
+  const day = preferDayFirst ? first : second;
+  const month = preferDayFirst ? second - 1 : first - 1;
+  if (day < 1 || day > 31 || month < 0 || month > 11) return null;
+  const rest = match[3].trim();
+  const amountMatches = [...rest.matchAll(AMOUNT_TOKEN)];
+  if (amountMatches.length === 0) return null;
+  const amount = parseAmountToken(amountMatches[amountMatches.length - 1][0]);
+  if (amount === null) return null;
+  const description = cleanDescription(rest.replace(AMOUNT_TOKEN, " ").trim());
+  if (description.length < 2 || isNonTransactionDescription(description)) return null;
+  let year = period.year;
+  if (month > period.month + 1) year -= 1;
+  const date = new Date(year, month, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
   return { date, description, amount };
 }
 
@@ -274,17 +319,20 @@ export function extractTransactionsFromText(
     .filter((line) => line.length > 2);
 
   const period = inferStatementPeriod(normalized, options?.fileName);
+  const preferDayFirst = /(?:\bS\$|\bSGD\b|\bDBS\b|\bOCBC\b|\bUOB\b|STANDARD CHARTERED)/i.test(normalized);
   const transactions: ParsedTransaction[] = [];
   let previousDay: number | null = null;
   let crossedIntoStatementMonth = false;
 
   for (const line of lines) {
+    const fullDateParsed = parseFullDateLine(line, preferDayFirst);
     let parsed =
-      parseFullDateLine(line) ??
+      fullDateParsed ??
+      parseShortDateLine(line, period, preferDayFirst) ??
       parseDayFirstLine(line, period, previousDay);
 
     // Refine month crossing for day-first lines once we see the drop.
-    if (!parseFullDateLine(line)) {
+    if (!fullDateParsed) {
       const dayMatch = line.match(/^(\d{1,2})\s+/);
       if (dayMatch) {
         const day = Number(dayMatch[1]);

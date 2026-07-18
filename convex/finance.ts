@@ -10,6 +10,11 @@ const accountType = v.union(
   v.literal("CREDIT_CARD"),
 );
 const budgetStyle = v.union(v.literal("MONTHLY"), v.literal("RESERVE"));
+const allocationExpenseGroup = v.union(
+  v.literal("ESSENTIALS"),
+  v.literal("LIFESTYLE"),
+  v.literal("GIVING"),
+);
 const transactionStatus = v.union(
   v.literal("PENDING_REVIEW"),
   v.literal("CONFIRMED"),
@@ -25,6 +30,14 @@ function normalizedText(value: string, min: number, max: number, label: string) 
     throw new Error(`${label} must be ${min}–${max} characters.`);
   }
   return text;
+}
+
+function inferredAllocationExpenseGroup(name: string) {
+  const normalized = name.trim().toLowerCase();
+  if (["groceries", "transport", "utilities", "rent & housing", "health", "subscriptions"].includes(normalized)) return "ESSENTIALS" as const;
+  if (["food & dining", "entertainment", "shopping"].includes(normalized)) return "LIFESTYLE" as const;
+  if (["giving", "gifts", "donations", "charity", "family support"].includes(normalized)) return "GIVING" as const;
+  return undefined;
 }
 
 async function ownedAccount(ctx: QueryCtx | MutationCtx, userId: Id<"users">, accountId: Id<"accounts">) {
@@ -62,10 +75,16 @@ export const overview = query({
       const spent = monthly.filter((item) => item.categoryId === category._id && item.amount < 0)
         .reduce((sum, item) => sum + Math.abs(item.amount), 0);
       const target = targets.get(category._id) ?? 0;
-      return { ...category, categoryId: category._id, spent, target, status: spent > target && target > 0 ? "OVER" : "ON_TRACK" };
+      const allocationGroup = category.allocationExpenseGroup ?? inferredAllocationExpenseGroup(category.name);
+      return { ...category, allocationExpenseGroup: allocationGroup, categoryId: category._id, spent, target, status: spent > target && target > 0 ? "OVER" : "ON_TRACK" };
     });
     const totalSpent = categoryRows.filter((row) => row.budgetStyle === "MONTHLY").reduce((sum, row) => sum + row.spent, 0);
     const totalBudget = categoryRows.filter((row) => row.budgetStyle === "MONTHLY").reduce((sum, row) => sum + row.target, 0);
+    const allocationSpending = {
+      essentials: categoryRows.filter((row) => row.allocationExpenseGroup === "ESSENTIALS").reduce((sum, row) => sum + row.spent, 0),
+      lifestyle: categoryRows.filter((row) => row.allocationExpenseGroup === "LIFESTYLE").reduce((sum, row) => sum + row.spent, 0),
+      giving: categoryRows.filter((row) => row.allocationExpenseGroup === "GIVING").reduce((sum, row) => sum + row.spent, 0),
+    };
     const transactionCounts = new Map<Id<"accounts">, number>();
     const statementCounts = new Map<Id<"accounts">, number>();
     for (const transaction of transactions) {
@@ -85,7 +104,7 @@ export const overview = query({
       salaryPlan,
       statements: statements.slice(0, 5),
       transactions: transactions.sort((a, b) => b.date - a.date).slice(0, 200).map((item) => ({ ...item, category: item.categoryId ? byCategory.get(item.categoryId) ?? null : null, account: byAccount.get(item.accountId) ?? null })),
-      summary: { totalSpent, totalBudget, totalVariance: totalSpent - totalBudget, categories: categoryRows },
+      summary: { totalSpent, totalBudget, totalVariance: totalSpent - totalBudget, categories: categoryRows, allocationSpending },
     };
   },
 });
@@ -159,18 +178,18 @@ export const deleteAccount = mutation({
 });
 
 export const createCategory = mutation({
-  args: { name: v.string(), icon: v.optional(v.string()), color: v.optional(v.string()), budgetStyle },
+  args: { name: v.string(), icon: v.optional(v.string()), color: v.optional(v.string()), budgetStyle, allocationExpenseGroup: v.optional(allocationExpenseGroup) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx); const name = normalizedText(args.name, 2, 40, "Category name");
     if (["Income", "Transfer", "Uncategorized"].includes(name)) throw new Error("That category name is reserved.");
     const duplicate = await ctx.db.query("categories").withIndex("by_user_name", (q) => q.eq("userId", userId).eq("name", name)).unique();
     if (duplicate) throw new Error("A category with that name already exists.");
-    return await ctx.db.insert("categories", { userId, name, icon: args.icon?.slice(0, 8) || "📁", color: args.color?.slice(0, 16) || "#0ea5e9", isDefault: false, budgetStyle: args.budgetStyle });
+    return await ctx.db.insert("categories", { userId, name, icon: args.icon?.slice(0, 8) || "📁", color: args.color?.slice(0, 16) || "#0ea5e9", isDefault: false, budgetStyle: args.budgetStyle, ...(args.allocationExpenseGroup ? { allocationExpenseGroup: args.allocationExpenseGroup } : {}) });
   },
 });
 
 export const updateCategory = mutation({
-  args: { id: v.id("categories"), name: v.optional(v.string()), icon: v.optional(v.string()), color: v.optional(v.string()), budgetStyle: v.optional(budgetStyle), fundingAccountId: v.optional(v.union(v.id("accounts"), v.null())) },
+  args: { id: v.id("categories"), name: v.optional(v.string()), icon: v.optional(v.string()), color: v.optional(v.string()), budgetStyle: v.optional(budgetStyle), allocationExpenseGroup: v.optional(v.union(allocationExpenseGroup, v.null())), fundingAccountId: v.optional(v.union(v.id("accounts"), v.null())) },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx); const category = await ownedCategory(ctx, userId, args.id);
     if (["Income", "Transfer", "Uncategorized"].includes(category.name) && (args.name !== undefined || args.budgetStyle !== undefined || args.fundingAccountId !== undefined)) throw new Error("System categories cannot be changed or mapped.");
@@ -181,7 +200,7 @@ export const updateCategory = mutation({
       if (duplicate && duplicate._id !== args.id) throw new Error("A category with that name already exists.");
       await ctx.db.patch(args.id, { name });
     }
-    await ctx.db.patch(args.id, { ...(args.icon === undefined ? {} : { icon: args.icon.slice(0, 8) }), ...(args.color === undefined ? {} : { color: args.color.slice(0, 16) }), ...(args.budgetStyle === undefined ? {} : { budgetStyle: args.budgetStyle }), ...(args.fundingAccountId === undefined ? {} : { fundingAccountId: args.fundingAccountId ?? undefined }) });
+    await ctx.db.patch(args.id, { ...(args.icon === undefined ? {} : { icon: args.icon.slice(0, 8) }), ...(args.color === undefined ? {} : { color: args.color.slice(0, 16) }), ...(args.budgetStyle === undefined ? {} : { budgetStyle: args.budgetStyle }), ...(args.allocationExpenseGroup === undefined ? {} : { allocationExpenseGroup: args.allocationExpenseGroup ?? undefined }), ...(args.fundingAccountId === undefined ? {} : { fundingAccountId: args.fundingAccountId ?? undefined }) });
   },
 });
 

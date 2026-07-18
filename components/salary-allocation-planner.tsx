@@ -17,14 +17,15 @@ type SalaryPlan = {
 } | null;
 
 type Field = Exclude<keyof NonNullable<SalaryPlan>, "income">;
+type LinkedSpending = { essentials: number; lifestyle: number; giving: number };
 
-const fields: Array<{ key: Field; label: string; hint: string; icon: string }> = [
-  { key: "essentials", label: "Essential expenses", hint: "Housing, bills, groceries, transport", icon: "🏠" },
-  { key: "lifestyle", label: "Lifestyle", hint: "Dining, entertainment, shopping", icon: "✨" },
+const fields: Array<{ key: Field; label: string; hint: string; icon: string; spendingKey?: keyof LinkedSpending }> = [
+  { key: "essentials", label: "Essential expenses", hint: "Housing, bills, groceries, transport", icon: "🏠", spendingKey: "essentials" },
+  { key: "lifestyle", label: "Lifestyle", hint: "Dining, entertainment, shopping", icon: "✨", spendingKey: "lifestyle" },
   { key: "savings", label: "Savings", hint: "Short-term goals and cash reserves", icon: "💧" },
   { key: "investments", label: "Investments", hint: "Long-term investing and retirement", icon: "📈" },
   { key: "debtRepayment", label: "Debt repayment", hint: "Loans and credit-card repayments", icon: "🧾" },
-  { key: "giving", label: "Giving", hint: "Family support, gifts, and donations", icon: "🤝" },
+  { key: "giving", label: "Giving", hint: "Family support, gifts, and donations", icon: "🤝", spendingKey: "giving" },
   { key: "other", label: "Other goals", hint: "Anything else you want to set aside", icon: "🎯" },
 ];
 
@@ -32,7 +33,7 @@ function emptyPlan(): NonNullable<SalaryPlan> {
   return { income: 0, essentials: 0, lifestyle: 0, savings: 0, investments: 0, debtRepayment: 0, giving: 0, other: 0 };
 }
 
-export function SalaryAllocationPlanner({ month, initialPlan, actualSpent }: { month: string; initialPlan: SalaryPlan; actualSpent: number }) {
+export function SalaryAllocationPlanner({ month, initialPlan, actualSpent, linkedSpending }: { month: string; initialPlan: SalaryPlan; actualSpent: number; linkedSpending: LinkedSpending }) {
   const saveSalaryPlan = useMutation(api.finance.saveSalaryPlan);
   const [plan, setPlan] = useState<NonNullable<SalaryPlan>>(initialPlan ?? emptyPlan());
   const [message, setMessage] = useState("");
@@ -86,6 +87,7 @@ export function SalaryAllocationPlanner({ month, initialPlan, actualSpent }: { m
           <label key={field.key} className="rounded-xl border border-stone-200 bg-white p-4 transition hover:border-lime-300">
             <span className="flex items-start gap-3"><span className="mt-0.5 text-lg">{field.icon}</span><span><span className="block font-semibold text-slate-900">{field.label}</span><span className="mt-0.5 block text-xs leading-5 text-slate-500">{field.hint}</span></span></span>
             <input type="number" min="0" step="0.01" value={plan[field.key] || ""} onChange={(event) => update(field.key, event.target.value)} placeholder="0.00" className="mt-4 w-full rounded-lg border border-stone-200 bg-[#fafafa] px-3 py-2.5 text-sm font-semibold text-slate-900 outline-none ring-lime-300 focus:ring-2" />
+            {field.spendingKey ? <span className="mt-2 block text-xs font-medium text-slate-500">Transaction spending: <span className="text-slate-900">{formatCurrency(linkedSpending[field.spendingKey])}</span></span> : null}
           </label>
         ))}
       </div>
