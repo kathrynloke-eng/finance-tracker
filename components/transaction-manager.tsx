@@ -245,6 +245,26 @@ export function TransactionManager({
     }
   }
 
+  async function confirmReview(transaction: Transaction) {
+    setBusyId(transaction.id);
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch("/api/transactions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: transaction.id, status: "CONFIRMED" }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Could not confirm transaction.");
+      setTransactions((current) => current.map((item) => item.id === transaction.id ? { ...item, status: data.transaction.status } : item));
+      setMessage(`Confirmed “${transaction.description}”.`);
+      onChanged?.();
+    } catch (confirmError) {
+      setError(confirmError instanceof Error ? confirmError.message : "Could not confirm transaction.");
+    } finally { setBusyId(null); }
+  }
+
   async function confirmDelete() {
     if (!pendingDelete) return;
     const transaction = pendingDelete;
@@ -751,6 +771,11 @@ export function TransactionManager({
                         ? "Confirmed"
                         : "Review"}
                     </span>
+                    {transaction.status === "PENDING_REVIEW" ? (
+                      <button type="button" disabled={busyId === transaction.id} onClick={() => void confirmReview(transaction)} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-60">
+                        Confirm
+                      </button>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => startEdit(transaction)}
