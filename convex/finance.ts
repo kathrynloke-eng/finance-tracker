@@ -340,17 +340,18 @@ export const saveReserveSchedule = mutation({
   },
 });
 
-export const addReserveForReview = mutation({
-  args: { scheduleId: v.id("reserveSchedules") },
-  handler: async (ctx, { scheduleId }) => {
+export const confirmReserveReview = mutation({
+  args: { scheduleId: v.id("reserveSchedules"), amount: v.number() },
+  handler: async (ctx, { scheduleId, amount }) => {
     const userId = await requireUser(ctx);
     const schedule = await ctx.db.get(scheduleId);
     if (!schedule || schedule.userId !== userId || !schedule.isActive) throw new Error("Reserve schedule not found.");
     if (schedule.nextReviewAt > Date.now()) throw new Error("This reserve is not due for review yet.");
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000) throw new Error("Enter a valid reserve amount.");
     const [category, account] = await Promise.all([ownedCategory(ctx, userId, schedule.categoryId), ownedAccount(ctx, userId, schedule.accountId)]);
     const transactionId = await ctx.db.insert("transactions", {
-      userId, date: schedule.nextReviewAt, description: `${category.name} reserve`, amount: -schedule.amount,
-      accountId: account._id, categoryId: category._id, status: "PENDING_REVIEW", confidence: 1,
+      userId, date: schedule.nextReviewAt, description: `${category.name} reserve`, amount: -amount,
+      accountId: account._id, categoryId: category._id, status: "CONFIRMED", confidence: 1,
     });
     await ctx.db.patch(scheduleId, { nextReviewAt: nextMonthlyReview(schedule.dayOfMonth, schedule.nextReviewAt + 86_400_000) });
     return transactionId;
