@@ -796,8 +796,8 @@ export function TransactionManager({
                       : ""
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-start gap-2.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 flex-1 items-start gap-2.5">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(transaction.id)}
@@ -815,13 +815,18 @@ export function TransactionManager({
                           ? ` · ${transaction.account.name}`
                           : ""}
                       </p>
-                      <select aria-label={`Category for ${transaction.description}`} value={categoryId} onChange={(event) => stageInlineCategory(transaction, event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none ring-emerald-500 focus:ring-2 sm:w-48">
-                        <option value="">Uncategorized</option>
-                        {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                      </select>
+                      <label className="mt-2 block w-full sm:max-w-56">
+                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:sr-only">
+                          Category
+                        </span>
+                        <select aria-label={`Category for ${transaction.description}`} value={categoryId} onChange={(event) => stageInlineCategory(transaction, event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none ring-emerald-500 focus:ring-2">
+                          <option value="">Uncategorized</option>
+                          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                        </select>
+                      </label>
                     </div>
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                  <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-2 border-t border-slate-100 pt-2 sm:w-auto sm:justify-end sm:border-t-0 sm:pt-0">
                     <p className="text-sm font-semibold text-slate-900">
                       {formatCurrency(transaction.amount)}
                     </p>
