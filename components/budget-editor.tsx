@@ -11,10 +11,7 @@ type Category = {
   color?: string | null;
   isDefault?: boolean;
   budgetStyle?: "MONTHLY" | "RESERVE";
-  allocationExpenseGroup?: "ESSENTIALS" | "LIFESTYLE" | "GIVING" | null;
 };
-
-type AllocationExpenseGroup = "" | "ESSENTIALS" | "LIFESTYLE" | "GIVING";
 
 type BudgetEditorProps = {
   month: string;
@@ -129,7 +126,6 @@ export function BudgetEditor({
   const [newBudgetStyle, setNewBudgetStyle] = useState<"MONTHLY" | "RESERVE">(
     "MONTHLY",
   );
-  const [newAllocationExpenseGroup, setNewAllocationExpenseGroup] = useState<AllocationExpenseGroup>("");
   const [adding, setAdding] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -139,7 +135,6 @@ export function BudgetEditor({
   const [editBudgetStyle, setEditBudgetStyle] = useState<"MONTHLY" | "RESERVE">(
     "MONTHLY",
   );
-  const [editAllocationExpenseGroup, setEditAllocationExpenseGroup] = useState<AllocationExpenseGroup>("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [pendingRemove, setPendingRemove] = useState<Category | null>(null);
 
@@ -267,7 +262,6 @@ export function BudgetEditor({
           icon: newIcon,
           color: newColor,
           budgetStyle: newBudgetStyle,
-          allocationExpenseGroup: newAllocationExpenseGroup || null,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -292,7 +286,6 @@ export function BudgetEditor({
       setNewIcon("📁");
       setNewColor(COLOR_OPTIONS[0]);
       setNewBudgetStyle("MONTHLY");
-      setNewAllocationExpenseGroup("");
       setMessage(
         newBudgetStyle === "RESERVE"
           ? `Added reserve “${category.name}”. Set a monthly allocation, then save.`
@@ -312,7 +305,6 @@ export function BudgetEditor({
     setEditIcon(category.icon ?? "📁");
     setEditColor(category.color ?? COLOR_OPTIONS[0]);
     setEditBudgetStyle(category.budgetStyle === "RESERVE" ? "RESERVE" : "MONTHLY");
-    setEditAllocationExpenseGroup(category.allocationExpenseGroup ?? "");
     setMessage("");
     setError("");
   }
@@ -332,7 +324,6 @@ export function BudgetEditor({
           icon: editIcon,
           color: editColor,
           budgetStyle: editBudgetStyle,
-          allocationExpenseGroup: editAllocationExpenseGroup || null,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -576,15 +567,6 @@ export function BudgetEditor({
             Reserves allocate money each month and only draw down when you spend.
           </p>
         </div>
-        <label className="mt-3 block text-xs font-medium text-slate-500">
-          Link transaction spending to salary plan
-          <select value={newAllocationExpenseGroup} onChange={(event) => setNewAllocationExpenseGroup(event.target.value as AllocationExpenseGroup)} className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none ring-emerald-500 focus:ring-2">
-            <option value="">Do not link</option>
-            <option value="ESSENTIALS">Essential expenses</option>
-            <option value="LIFESTYLE">Lifestyle expenses</option>
-            <option value="GIVING">Giving expenses</option>
-          </select>
-        </label>
       </form>
 
       {pendingRemove ? (
@@ -701,15 +683,6 @@ export function BudgetEditor({
                       </button>
                     </div>
                   </div>
-                  <label className="block text-xs font-medium text-slate-500">
-                    Salary plan link
-                    <select value={editAllocationExpenseGroup} onChange={(event) => setEditAllocationExpenseGroup(event.target.value as AllocationExpenseGroup)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none ring-emerald-500 focus:ring-2">
-                      <option value="">Do not link</option>
-                      <option value="ESSENTIALS">Essential expenses</option>
-                      <option value="LIFESTYLE">Lifestyle expenses</option>
-                      <option value="GIVING">Giving expenses</option>
-                    </select>
-                  </label>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -756,11 +729,6 @@ export function BudgetEditor({
                         {category.budgetStyle === "RESERVE" ? (
                           <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
                             Reserve
-                          </span>
-                        ) : null}
-                        {category.allocationExpenseGroup ? (
-                          <span className="rounded-full bg-lime-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-lime-800">
-                            {category.allocationExpenseGroup.toLowerCase()}
                           </span>
                         ) : null}
                       </div>

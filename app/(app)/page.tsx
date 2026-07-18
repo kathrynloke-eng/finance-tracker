@@ -36,6 +36,9 @@ export default function DashboardPage() {
   const reserveRemaining = Math.max(0, reserveTarget - reserveRecorded);
   const showOnMobile = (section: "overview" | "reserve" | "spending") =>
     mobileSection === section ? "block" : "hidden sm:block";
+  const updateMonth = (value: string) => {
+    if (/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) setMonth(value);
+  };
 
   return (
     <div className="space-y-5 pb-4 sm:space-y-8">
@@ -66,7 +69,8 @@ export default function DashboardPage() {
                 type="month"
                 value={month}
                 max={currentMonth()}
-                onChange={(event) => setMonth(event.target.value)}
+                onChange={(event) => updateMonth(event.target.value)}
+                onInput={(event) => updateMonth(event.currentTarget.value)}
                 className="bg-transparent text-sm font-semibold text-white outline-none [color-scheme:dark]"
               />
             </label>
