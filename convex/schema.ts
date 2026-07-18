@@ -66,6 +66,7 @@ export default defineSchema({
     debtRepayment: v.number(),
     giving: v.number(),
     other: v.number(),
+    allocationLabels: v.optional(v.array(v.string())),
   }).index("by_user_month", ["userId", "month"]),
 
   reserveSchedules: defineTable({

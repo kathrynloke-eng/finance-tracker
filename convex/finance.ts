@@ -277,6 +277,7 @@ const salaryPlanArgs = {
   debtRepayment: v.number(),
   giving: v.number(),
   other: v.number(),
+  allocationLabels: v.optional(v.array(v.string())),
 };
 
 export const saveSalaryPlan = mutation({
@@ -311,10 +312,11 @@ export const saveSalaryPlan = mutation({
         debtRepayment: args.debtRepayment,
         giving: args.giving,
         other: args.other,
+        ...(args.allocationLabels === undefined ? {} : { allocationLabels: args.allocationLabels.map((label) => normalizedText(label, 1, 40, "Allocation label")) }),
       });
       return existing._id;
     }
-    return await ctx.db.insert("monthlySalaryPlans", { userId, ...args });
+    return await ctx.db.insert("monthlySalaryPlans", { userId, ...args, ...(args.allocationLabels === undefined ? {} : { allocationLabels: args.allocationLabels.map((label) => normalizedText(label, 1, 40, "Allocation label")) }) });
   },
 });
 
