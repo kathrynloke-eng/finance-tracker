@@ -93,6 +93,19 @@ export const overview = query({
     const byCategory = new Map(categories.map((category) => [category._id, category]));
     const byAccount = new Map(accounts.map((account) => [account._id, account]));
     const targets = new Map(budgets.map((budget) => [budget.categoryId, budget.targetAmount]));
+    const dueReserveSchedules = reserveSchedules.filter(
+      (schedule) => schedule.isActive && schedule.nextReviewAt <= Date.now(),
+    );
+    const reviewMonths = [...new Set(dueReserveSchedules.map((schedule) => new Date(schedule.nextReviewAt).toISOString().slice(0, 7)))];
+    const reviewBudgetRows = await Promise.all(
+      reviewMonths.map(async (reviewMonth) => [
+        reviewMonth,
+        await ctx.db.query("monthlyBudgets").withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", reviewMonth)).collect(),
+      ] as const),
+    );
+    const reviewTargets = new Map(
+      reviewBudgetRows.map(([reviewMonth, items]) => [reviewMonth, new Map(items.map((item) => [item.categoryId, item.targetAmount]))]),
+    );
     const spendingByCategory = new Map<Id<"categories">, number>();
     for (const transaction of monthly) {
       if (transaction.categoryId && transaction.amount < 0 && transaction.status === "CONFIRMED") {
@@ -126,9 +139,9 @@ export const overview = query({
         category: byCategory.get(schedule.categoryId) ?? null,
         account: byAccount.get(schedule.accountId) ?? null,
       })),
-      dueReserveSchedules: reserveSchedules.filter((schedule) => schedule.isActive && schedule.nextReviewAt <= Date.now()).map((schedule) => ({
+      dueReserveSchedules: dueReserveSchedules.map((schedule) => ({
         ...schedule,
-        suggestedAmount: targets.has(schedule.categoryId) ? targets.get(schedule.categoryId)! : schedule.amount,
+        suggestedAmount: reviewTargets.get(new Date(schedule.nextReviewAt).toISOString().slice(0, 7))?.get(schedule.categoryId) ?? schedule.amount,
         category: byCategory.get(schedule.categoryId) ?? null,
         account: byAccount.get(schedule.accountId) ?? null,
       })),
