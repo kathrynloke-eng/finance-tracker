@@ -92,6 +92,7 @@ export const overview = query({
     const usageByAccount = new Map(accountUsage);
     const byCategory = new Map(categories.map((category) => [category._id, category]));
     const byAccount = new Map(accounts.map((account) => [account._id, account]));
+    const sourceAccount = accounts.find((account) => account.isTransferSource) ?? null;
     const targets = new Map(budgets.map((budget) => [budget.categoryId, budget.targetAmount]));
     const dueReserveSchedules = reserveSchedules.filter(
       (schedule) => schedule.isActive && schedule.nextReviewAt <= Date.now(),
@@ -137,13 +138,13 @@ export const overview = query({
       reserveSchedules: reserveSchedules.map((schedule) => ({
         ...schedule,
         category: byCategory.get(schedule.categoryId) ?? null,
-        account: byAccount.get(schedule.accountId) ?? null,
+        account: sourceAccount,
       })),
       dueReserveSchedules: dueReserveSchedules.map((schedule) => ({
         ...schedule,
         suggestedAmount: reviewTargets.get(new Date(schedule.nextReviewAt).toISOString().slice(0, 7))?.get(schedule.categoryId) ?? schedule.amount,
         category: byCategory.get(schedule.categoryId) ?? null,
-        account: byAccount.get(schedule.accountId) ?? null,
+        account: sourceAccount,
       })),
       statements,
       transactions: recentTransactions.map((item) => ({ ...item, category: item.categoryId ? byCategory.get(item.categoryId) ?? null : null, account: byAccount.get(item.accountId) ?? null })),
@@ -335,16 +336,17 @@ export const saveSalaryPlan = mutation({
 });
 
 export const saveReserveSchedule = mutation({
-  args: { categoryId: v.id("categories"), accountId: v.id("accounts"), amount: v.number(), dayOfMonth: v.number(), isActive: v.boolean() },
+  args: { categoryId: v.id("categories"), amount: v.number(), dayOfMonth: v.number(), isActive: v.boolean() },
   handler: async (ctx, args) => {
     const userId = await requireUser(ctx);
     const category = await ownedCategory(ctx, userId, args.categoryId);
-    await ownedAccount(ctx, userId, args.accountId);
+    const sourceAccount = await ctx.db.query("accounts").withIndex("by_user_source", (q) => q.eq("userId", userId).eq("isTransferSource", true)).unique();
+    if (!sourceAccount) throw new Error("Set a transfer source under Accounts before scheduling a reserve.");
     if (category.budgetStyle !== "RESERVE") throw new Error("Choose a reserve category.");
     if (!Number.isFinite(args.amount) || args.amount <= 0 || args.amount > 1_000_000_000) throw new Error("Enter a valid reserve amount.");
     if (!Number.isInteger(args.dayOfMonth) || args.dayOfMonth < 1 || args.dayOfMonth > 28) throw new Error("Choose a day from 1 to 28.");
     const existing = await ctx.db.query("reserveSchedules").withIndex("by_category", (q) => q.eq("categoryId", args.categoryId)).first();
-    const values = { accountId: args.accountId, amount: args.amount, dayOfMonth: args.dayOfMonth, isActive: args.isActive, nextReviewAt: nextMonthlyReview(args.dayOfMonth) };
+    const values = { accountId: sourceAccount._id, amount: args.amount, dayOfMonth: args.dayOfMonth, isActive: args.isActive, nextReviewAt: nextMonthlyReview(args.dayOfMonth) };
     if (existing) {
       if (existing.userId !== userId) throw new Error("Unauthorized");
       await ctx.db.patch(existing._id, values);
@@ -362,7 +364,8 @@ export const confirmReserveReview = mutation({
     if (!schedule || schedule.userId !== userId || !schedule.isActive) throw new Error("Reserve schedule not found.");
     if (schedule.nextReviewAt > Date.now()) throw new Error("This reserve is not due for review yet.");
     if (!Number.isFinite(amount) || amount <= 0 || amount > 1_000_000_000) throw new Error("Enter a valid reserve amount.");
-    const [category, account] = await Promise.all([ownedCategory(ctx, userId, schedule.categoryId), ownedAccount(ctx, userId, schedule.accountId)]);
+    const [category, account] = await Promise.all([ownedCategory(ctx, userId, schedule.categoryId), ctx.db.query("accounts").withIndex("by_user_source", (q) => q.eq("userId", userId).eq("isTransferSource", true)).unique()]);
+    if (!account) throw new Error("Set a transfer source under Accounts before confirming a reserve.");
     const transactionId = await ctx.db.insert("transactions", {
       userId, date: schedule.nextReviewAt, description: `${category.name} reserve`, amount: -amount,
       accountId: account._id, categoryId: category._id, status: "CONFIRMED", confidence: 1,
