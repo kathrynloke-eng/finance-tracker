@@ -632,6 +632,12 @@ export function TransactionManager({
             ) : null}
           </div>
 
+          <div className="hidden border-b border-slate-100 bg-slate-50/70 px-4 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:grid md:grid-cols-[minmax(0,1fr)_14rem_auto] md:gap-4">
+            <span>Transaction</span>
+            <span>Category</span>
+            <span className="text-right">Amount &amp; actions</span>
+          </div>
+
           {selectedCount > 1 ? (
             <div className="sticky bottom-3 z-10 flex flex-col gap-2 border-b border-emerald-200 bg-emerald-50 p-3 shadow-lg sm:flex-row sm:items-center">
               <p className="text-sm text-emerald-950"><strong>{selectedCount} selected.</strong> Choose a category in any selected row to stage it for all of them.</p>
@@ -796,7 +802,7 @@ export function TransactionManager({
                       : ""
                 }`}
               >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex flex-col gap-3 md:grid md:grid-cols-[minmax(0,1fr)_14rem_auto] md:items-center md:gap-4">
                   <div className="flex min-w-0 flex-1 items-start gap-2.5">
                     <input
                       type="checkbox"
@@ -815,18 +821,18 @@ export function TransactionManager({
                           ? ` · ${transaction.account.name}`
                           : ""}
                       </p>
-                      <label className="mt-2 block w-full sm:max-w-56">
-                        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 sm:sr-only">
-                          Category
-                        </span>
-                        <select aria-label={`Category for ${transaction.description}`} value={categoryId} onChange={(event) => stageInlineCategory(transaction, event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none ring-emerald-500 focus:ring-2">
-                          <option value="">Uncategorized</option>
-                          {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                        </select>
-                      </label>
                     </div>
                   </div>
-                  <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-2 border-t border-slate-100 pt-2 sm:w-auto sm:justify-end sm:border-t-0 sm:pt-0">
+                  <label className="block w-full md:w-auto">
+                    <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500 md:sr-only">
+                      Category
+                    </span>
+                    <select aria-label={`Category for ${transaction.description}`} value={categoryId} onChange={(event) => stageInlineCategory(transaction, event.target.value)} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 outline-none ring-emerald-500 focus:ring-2">
+                      <option value="">Uncategorized</option>
+                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                  </label>
+                  <div className="flex w-full flex-wrap items-center justify-between gap-x-2 gap-y-2 border-t border-slate-100 pt-2 md:w-auto md:justify-end md:border-t-0 md:pt-0">
                     <p className="text-sm font-semibold text-slate-900">
                       {formatCurrency(transaction.amount)}
                     </p>
