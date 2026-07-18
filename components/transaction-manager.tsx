@@ -43,6 +43,11 @@ type Draft = {
   status: "PENDING_REVIEW" | "CONFIRMED";
 };
 
+type InlineCategoryChange = {
+  categoryId: string;
+  status: Draft["status"];
+};
+
 function toDateInput(value: string) {
   return format(new Date(value), "yyyy-MM-dd");
 }
@@ -88,8 +93,7 @@ export function TransactionManager({
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
-  const [bulkCategoryId, setBulkCategoryId] = useState("KEEP");
-  const [bulkStatus, setBulkStatus] = useState<"KEEP" | Draft["status"]>("KEEP");
+  const [inlineCategoryChanges, setInlineCategoryChanges] = useState<Record<string, InlineCategoryChange>>({});
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -113,6 +117,15 @@ export function TransactionManager({
   const selectedCount = filteredIds.filter((id) => selectedIds.has(id)).length;
   const allFilteredSelected =
     filteredIds.length > 0 && selectedCount === filteredIds.length;
+  const changedInlineIds = useMemo(
+    () => transactions
+      .filter((transaction) => {
+        const change = inlineCategoryChanges[transaction.id];
+        return change && (change.categoryId !== (transaction.category?.id ?? "") || change.status !== transaction.status);
+      })
+      .map((transaction) => transaction.id),
+    [inlineCategoryChanges, transactions],
+  );
   function toggleSelected(id: string) {
     setSelectedIds((current) => {
       const next = new Set(current);
@@ -134,22 +147,32 @@ export function TransactionManager({
     });
   }
 
-  async function applyBulkAssignment() {
-    const ids = filteredIds.filter((id) => selectedIds.has(id));
-    if (ids.length === 0 || (bulkCategoryId === "KEEP" && bulkStatus === "KEEP")) return;
-    const updates = transactions
-      .filter((transaction) => ids.includes(transaction.id))
-      .map((transaction) => {
-        const draft = draftFromTransaction(transaction);
-        return {
-          id: transaction.id,
-          ...draft,
-          categoryId: bulkCategoryId === "KEEP" ? draft.categoryId : bulkCategoryId,
-          status: bulkStatus === "KEEP" ? draft.status : bulkStatus,
-        };
-      });
+  function stageInlineCategory(transaction: Transaction, categoryId: string) {
+    const ids = selectedIds.has(transaction.id)
+      ? [...selectedIds]
+      : [transaction.id];
+    setInlineCategoryChanges((current) => {
+      const next = { ...current };
+      for (const id of ids) {
+        next[id] = { categoryId, status: "CONFIRMED" };
+      }
+      return next;
+    });
+    setMessage("");
+    setError("");
+  }
 
-    setBusyId("bulk-assign");
+  async function saveInlineCategories() {
+    const updates = transactions
+      .filter((transaction) => changedInlineIds.includes(transaction.id))
+      .map((transaction) => ({
+        id: transaction.id,
+        ...draftFromTransaction(transaction),
+        ...inlineCategoryChanges[transaction.id],
+      }));
+    if (updates.length === 0) return;
+
+    setBusyId("inline-save");
     setMessage("");
     setError("");
     try {
@@ -159,20 +182,19 @@ export function TransactionManager({
         body: JSON.stringify({ updates: updates.map((update) => ({ ...update, amount: Number(update.amount), categoryId: update.categoryId || null })) }),
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? "Could not apply the bulk assignment.");
+      if (!response.ok) throw new Error(data.error ?? "Could not save category changes.");
       const updated = new Map<string, Transaction>((data.transactions ?? []).map((item: Transaction) => [item.id, item]));
       setTransactions((current) => current.map((transaction) => updated.get(transaction.id) ?? transaction));
       setSelectedIds((current) => {
         const next = new Set(current);
-        for (const id of ids) next.delete(id);
+        for (const update of updates) next.delete(update.id);
         return next;
       });
-      setBulkCategoryId("KEEP");
-      setBulkStatus("KEEP");
-      setMessage(`Applied updates to ${updates.length} transaction${updates.length === 1 ? "" : "s"}.`);
+      setInlineCategoryChanges({});
+      setMessage(`Saved ${updates.length} category update${updates.length === 1 ? "" : "s"}.`);
       onChanged?.();
-    } catch (assignmentError) {
-      setError(assignmentError instanceof Error ? assignmentError.message : "Could not apply the bulk assignment.");
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save category changes.");
     } finally {
       setBusyId(null);
     }
@@ -291,26 +313,6 @@ export function TransactionManager({
     } finally {
       setBusyId(null);
     }
-  }
-
-  async function confirmReview(transaction: Transaction) {
-    setBusyId(transaction.id);
-    setMessage("");
-    setError("");
-    try {
-      const response = await fetch("/api/transactions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: transaction.id, status: "CONFIRMED" }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.error ?? "Could not confirm transaction.");
-      setTransactions((current) => current.map((item) => item.id === transaction.id ? { ...item, status: data.transaction.status } : item));
-      setMessage(`Confirmed “${transaction.description}”.`);
-      onChanged?.();
-    } catch (confirmError) {
-      setError(confirmError instanceof Error ? confirmError.message : "Could not confirm transaction.");
-    } finally { setBusyId(null); }
   }
 
   async function confirmDelete() {
@@ -630,27 +632,26 @@ export function TransactionManager({
             ) : null}
           </div>
 
-          {selectedCount > 0 ? (
+          {selectedCount > 1 ? (
             <div className="sticky bottom-3 z-10 flex flex-col gap-2 border-b border-emerald-200 bg-emerald-50 p-3 shadow-lg sm:flex-row sm:items-center">
-              <p className="text-sm font-semibold text-slate-800">{selectedCount} selected</p>
-              <select aria-label="Assign category to selected" value={bulkCategoryId} onChange={(event) => setBulkCategoryId(event.target.value)} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2">
-                <option value="KEEP">Keep category</option>
-                <option value="">Uncategorized</option>
-                {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-              </select>
-              <select aria-label="Set status for selected" value={bulkStatus} onChange={(event) => setBulkStatus(event.target.value as "KEEP" | Draft["status"])} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2">
-                <option value="KEEP">Keep status</option>
-                <option value="PENDING_REVIEW">Review</option>
-                <option value="CONFIRMED">Confirmed</option>
-              </select>
-              <button type="button" onClick={() => void applyBulkAssignment()} disabled={busyId === "bulk-assign" || (bulkCategoryId === "KEEP" && bulkStatus === "KEEP")} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
-                {busyId === "bulk-assign" ? "Applying..." : "Apply & save"}
-              </button>
+              <p className="text-sm text-emerald-950"><strong>{selectedCount} selected.</strong> Choose a category in any selected row to stage it for all of them.</p>
+            </div>
+          ) : null}
+
+          {changedInlineIds.length > 0 ? (
+            <div className="sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 border-b border-sky-200 bg-sky-50 p-3 shadow-lg">
+              <p className="text-sm font-semibold text-sky-950">{changedInlineIds.length} category update{changedInlineIds.length === 1 ? "" : "s"} ready</p>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setInlineCategoryChanges({})} disabled={busyId === "inline-save"} className="rounded-lg border border-sky-200 bg-white px-3 py-2 text-sm font-semibold text-sky-800 disabled:opacity-60">Cancel</button>
+                <button type="button" onClick={() => void saveInlineCategories()} disabled={busyId === "inline-save"} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">{busyId === "inline-save" ? "Saving..." : "Save changes"}</button>
+              </div>
             </div>
           ) : null}
 
           {filtered.map((transaction) => {
             const isEditing = editingId === transaction.id && editDraft;
+            const inlineChange = inlineCategoryChanges[transaction.id];
+            const categoryId = inlineChange?.categoryId ?? transaction.category?.id ?? "";
 
             if (isEditing && editDraft) {
               return (
@@ -813,10 +814,11 @@ export function TransactionManager({
                         {transaction.account
                           ? ` · ${transaction.account.name}`
                           : ""}
-                        {transaction.category
-                          ? ` · ${transaction.category.name}`
-                          : " · Uncategorized"}
                       </p>
+                      <select aria-label={`Category for ${transaction.description}`} value={categoryId} onChange={(event) => stageInlineCategory(transaction, event.target.value)} className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 outline-none ring-emerald-500 focus:ring-2 sm:w-48">
+                        <option value="">Uncategorized</option>
+                        {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                      </select>
                     </div>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -836,12 +838,14 @@ export function TransactionManager({
                       }`}
                     >
                       {transaction.status === "CONFIRMED"
-                        ? "Confirmed"
-                        : "Review"}
+                        ? "Reviewed"
+                        : transaction.category
+                          ? "Suggested"
+                          : "Needs category"}
                     </span>
-                    {transaction.status === "PENDING_REVIEW" ? (
-                      <button type="button" disabled={busyId === transaction.id} onClick={() => void confirmReview(transaction)} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-60">
-                        Confirm
+                    {transaction.status === "PENDING_REVIEW" && transaction.category ? (
+                      <button type="button" disabled={busyId === "inline-save"} onClick={() => stageInlineCategory(transaction, transaction.category?.id ?? "")} className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 disabled:opacity-60">
+                        Accept
                       </button>
                     ) : null}
                     <button
