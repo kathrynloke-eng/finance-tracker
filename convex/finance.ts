@@ -57,23 +57,38 @@ export const overview = query({
   handler: async (ctx, { month }) => {
     const userId = await requireUser(ctx);
     if (!validMonth(month)) throw new Error("Invalid month.");
-    const [accounts, categories, budgets, transactions, statements, salaryPlan] = await Promise.all([
+    const start = Date.parse(`${month}-01T00:00:00.000Z`);
+    const next = new Date(start); next.setUTCMonth(next.getUTCMonth() + 1);
+    const [accounts, categories, budgets, monthly, recentTransactions, statements, salaryPlan] = await Promise.all([
       ctx.db.query("accounts").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("categories").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("monthlyBudgets").withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", month)).collect(),
-      ctx.db.query("transactions").withIndex("by_user_date", (q) => q.eq("userId", userId)).collect(),
-      ctx.db.query("statements").withIndex("by_user_uploaded", (q) => q.eq("userId", userId)).order("desc").collect(),
+      ctx.db.query("transactions").withIndex("by_user_date", (q) => q.eq("userId", userId).gte("date", start).lt("date", next.getTime())).collect(),
+      ctx.db.query("transactions").withIndex("by_user_date", (q) => q.eq("userId", userId)).order("desc").take(200),
+      ctx.db.query("statements").withIndex("by_user_uploaded", (q) => q.eq("userId", userId)).order("desc").take(5),
       ctx.db.query("monthlySalaryPlans").withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", month)).unique(),
     ]);
-    const start = Date.parse(`${month}-01T00:00:00.000Z`);
-    const next = new Date(start); next.setUTCMonth(next.getUTCMonth() + 1);
-    const monthly = transactions.filter((item) => item.date >= start && item.date < next.getTime());
+    const accountUsage = await Promise.all(
+      accounts.map(async (account) => {
+        const [transaction, statement] = await Promise.all([
+          ctx.db.query("transactions").withIndex("by_user_account", (q) => q.eq("userId", userId).eq("accountId", account._id)).first(),
+          ctx.db.query("statements").withIndex("by_user_account", (q) => q.eq("userId", userId).eq("accountId", account._id)).first(),
+        ]);
+        return [account._id, { hasTransactions: Boolean(transaction), hasStatements: Boolean(statement) }] as const;
+      }),
+    );
+    const usageByAccount = new Map(accountUsage);
     const byCategory = new Map(categories.map((category) => [category._id, category]));
     const byAccount = new Map(accounts.map((account) => [account._id, account]));
     const targets = new Map(budgets.map((budget) => [budget.categoryId, budget.targetAmount]));
+    const spendingByCategory = new Map<Id<"categories">, number>();
+    for (const transaction of monthly) {
+      if (transaction.categoryId && transaction.amount < 0) {
+        spendingByCategory.set(transaction.categoryId, (spendingByCategory.get(transaction.categoryId) ?? 0) + Math.abs(transaction.amount));
+      }
+    }
     const categoryRows = categories.map((category) => {
-      const spent = monthly.filter((item) => item.categoryId === category._id && item.amount < 0)
-        .reduce((sum, item) => sum + Math.abs(item.amount), 0);
+      const spent = spendingByCategory.get(category._id) ?? 0;
       const target = targets.get(category._id) ?? 0;
       const allocationGroup = category.allocationExpenseGroup ?? inferredAllocationExpenseGroup(category.name);
       return { ...category, allocationExpenseGroup: allocationGroup, categoryId: category._id, spent, target, status: spent > target && target > 0 ? "OVER" : "ON_TRACK" };
@@ -85,25 +100,17 @@ export const overview = query({
       lifestyle: categoryRows.filter((row) => row.allocationExpenseGroup === "LIFESTYLE").reduce((sum, row) => sum + row.spent, 0),
       giving: categoryRows.filter((row) => row.allocationExpenseGroup === "GIVING").reduce((sum, row) => sum + row.spent, 0),
     };
-    const transactionCounts = new Map<Id<"accounts">, number>();
-    const statementCounts = new Map<Id<"accounts">, number>();
-    for (const transaction of transactions) {
-      transactionCounts.set(transaction.accountId, (transactionCounts.get(transaction.accountId) ?? 0) + 1);
-    }
-    for (const statement of statements) {
-      statementCounts.set(statement.accountId, (statementCounts.get(statement.accountId) ?? 0) + 1);
-    }
     return {
       accounts: accounts.map((account) => ({
         ...account,
-        transactionCount: transactionCounts.get(account._id) ?? 0,
-        statementCount: statementCounts.get(account._id) ?? 0,
+        hasTransactions: usageByAccount.get(account._id)?.hasTransactions ?? false,
+        hasStatements: usageByAccount.get(account._id)?.hasStatements ?? false,
       })),
       categories,
       budgets,
       salaryPlan,
-      statements: statements.slice(0, 5),
-      transactions: transactions.sort((a, b) => b.date - a.date).slice(0, 200).map((item) => ({ ...item, category: item.categoryId ? byCategory.get(item.categoryId) ?? null : null, account: byAccount.get(item.accountId) ?? null })),
+      statements,
+      transactions: recentTransactions.map((item) => ({ ...item, category: item.categoryId ? byCategory.get(item.categoryId) ?? null : null, account: byAccount.get(item.accountId) ?? null })),
       summary: { totalSpent, totalBudget, totalVariance: totalSpent - totalBudget, categories: categoryRows, allocationSpending },
     };
   },

@@ -9,8 +9,8 @@ type Account = {
   name: string;
   type: "CHECKING" | "SAVINGS" | "CREDIT_CARD";
   isTransferSource: boolean;
-  transactionCount: number;
-  statementCount: number;
+  hasTransactions: boolean;
+  hasStatements: boolean;
 };
 
 type Category = {
@@ -239,9 +239,9 @@ function AccountsManagerEditor({
   }
 
   function requestRemoveAccount(account: Account) {
-    if (account.transactionCount > 0) {
+    if (account.hasTransactions) {
       setAccountError(
-        `“${account.name}” was not removed because it contains ${account.transactionCount} transaction${account.transactionCount === 1 ? "" : "s"}. Your financial history has not been changed.`,
+        `“${account.name}” was not removed because it contains transactions. Your financial history has not been changed.`,
       );
       setAccountMessage("");
       return;
@@ -293,7 +293,7 @@ function AccountsManagerEditor({
       );
       setPendingRemove(null);
       setAccountMessage(
-        `Removed account “${account.name}”.${account.statementCount > 0 ? " Its statement metadata was removed too." : ""}`,
+        `Removed account “${account.name}”.${account.hasStatements ? " Its statement metadata was removed too." : ""}`,
       );
       await refreshPlan();
       router.refresh();

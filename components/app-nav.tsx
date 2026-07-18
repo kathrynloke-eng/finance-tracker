@@ -1,9 +1,9 @@
 "use client";
 
-import { useAuthActions } from "@convex-dev/auth/react";
-import { useQuery } from "convex/react";
+import { useAuthActions, useConvexAuth } from "@convex-dev/auth/react";
+import { useMutation, useQuery } from "convex/react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/convex/_generated/api";
 
 const links = [
@@ -21,11 +21,22 @@ const mobileMoreLinks = links.slice(3);
 
 export function AppNav() {
   const { signOut } = useAuthActions();
+  const { isAuthenticated } = useConvexAuth();
   const isAdministrator = useQuery(api.users.isAdministrator);
+  const initialize = useMutation(api.users.initialize);
+  const redactStatementFilenames = useMutation(api.finance.redactStatementFilenames);
+  const didBootstrap = useRef(false);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const moreLinks = isAdministrator
     ? [...mobileMoreLinks, { href: "/admin", label: "Admin", icon: "🛡️" }]
     : mobileMoreLinks;
+
+  useEffect(() => {
+    if (!isAuthenticated || didBootstrap.current) return;
+    didBootstrap.current = true;
+    void initialize({});
+    void redactStatementFilenames({});
+  }, [initialize, isAuthenticated, redactStatementFilenames]);
 
   return (
     <>

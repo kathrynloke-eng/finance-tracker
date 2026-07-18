@@ -77,7 +77,9 @@ export default defineSchema({
     periodStart: v.optional(v.number()),
     periodEnd: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
-  }).index("by_user_uploaded", ["userId"]),
+  })
+    .index("by_user_uploaded", ["userId"])
+    .index("by_user_account", ["userId", "accountId"]),
 
   transactions: defineTable({
     userId: v.id("users"),
@@ -92,6 +94,7 @@ export default defineSchema({
     dedupeHash: v.optional(v.string()),
   })
     .index("by_user_date", ["userId", "date"])
+    .index("by_user_account", ["userId", "accountId"])
     .index("by_user_dedupe", ["userId", "dedupeHash"]),
 
   recurringTransactions: defineTable({
