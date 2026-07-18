@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { SectionCard, StatCard } from "@/components/ui";
+import { ReserveReviewPrompt } from "@/components/reserve-review-prompt";
 import { currentMonth, useFinanceOverview } from "@/components/use-finance-overview";
 import { formatCurrency, formatMonthLabel } from "@/lib/format";
 
@@ -84,6 +85,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </section>
+
+      <ReserveReviewPrompt schedules={data.dueReserveSchedules.map((schedule) => ({ ...schedule, _id: String(schedule._id) }))} />
 
       <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <StatCard compact label="Monthly spent" value={formatCurrency(summary.totalSpent)} hint="Confirmed and imported expenses" />

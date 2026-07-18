@@ -24,6 +24,17 @@ function validMonth(month: string) {
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
 }
 
+function nextMonthlyReview(dayOfMonth: number, from = Date.now()) {
+  const date = new Date(from);
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth();
+  const day = Math.min(dayOfMonth, new Date(Date.UTC(year, month + 1, 0)).getUTCDate());
+  const candidate = Date.UTC(year, month, day);
+  return candidate >= Date.UTC(year, month, date.getUTCDate())
+    ? candidate
+    : Date.UTC(year, month + 1, Math.min(dayOfMonth, new Date(Date.UTC(year, month + 2, 0)).getUTCDate()));
+}
+
 function normalizedText(value: string, min: number, max: number, label: string) {
   const text = value.trim().replace(/\s+/g, " ");
   if (text.length < min || text.length > max) {
@@ -59,7 +70,7 @@ export const overview = query({
     if (!validMonth(month)) throw new Error("Invalid month.");
     const start = Date.parse(`${month}-01T00:00:00.000Z`);
     const next = new Date(start); next.setUTCMonth(next.getUTCMonth() + 1);
-    const [accounts, categories, budgets, monthly, recentTransactions, statements, salaryPlan] = await Promise.all([
+    const [accounts, categories, budgets, monthly, recentTransactions, statements, salaryPlan, reserveSchedules] = await Promise.all([
       ctx.db.query("accounts").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("categories").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
       ctx.db.query("monthlyBudgets").withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", month)).collect(),
@@ -67,6 +78,7 @@ export const overview = query({
       ctx.db.query("transactions").withIndex("by_user_date", (q) => q.eq("userId", userId)).order("desc").take(200),
       ctx.db.query("statements").withIndex("by_user_uploaded", (q) => q.eq("userId", userId)).order("desc").take(5),
       ctx.db.query("monthlySalaryPlans").withIndex("by_user_month", (q) => q.eq("userId", userId).eq("month", month)).unique(),
+      ctx.db.query("reserveSchedules").withIndex("by_user", (q) => q.eq("userId", userId)).collect(),
     ]);
     const accountUsage = await Promise.all(
       accounts.map(async (account) => {
@@ -83,7 +95,7 @@ export const overview = query({
     const targets = new Map(budgets.map((budget) => [budget.categoryId, budget.targetAmount]));
     const spendingByCategory = new Map<Id<"categories">, number>();
     for (const transaction of monthly) {
-      if (transaction.categoryId && transaction.amount < 0) {
+      if (transaction.categoryId && transaction.amount < 0 && transaction.status === "CONFIRMED") {
         spendingByCategory.set(transaction.categoryId, (spendingByCategory.get(transaction.categoryId) ?? 0) + Math.abs(transaction.amount));
       }
     }
@@ -109,6 +121,16 @@ export const overview = query({
       categories,
       budgets,
       salaryPlan,
+      reserveSchedules: reserveSchedules.map((schedule) => ({
+        ...schedule,
+        category: byCategory.get(schedule.categoryId) ?? null,
+        account: byAccount.get(schedule.accountId) ?? null,
+      })),
+      dueReserveSchedules: reserveSchedules.filter((schedule) => schedule.isActive && schedule.nextReviewAt <= Date.now()).map((schedule) => ({
+        ...schedule,
+        category: byCategory.get(schedule.categoryId) ?? null,
+        account: byAccount.get(schedule.accountId) ?? null,
+      })),
       statements,
       transactions: recentTransactions.map((item) => ({ ...item, category: item.categoryId ? byCategory.get(item.categoryId) ?? null : null, account: byAccount.get(item.accountId) ?? null })),
       summary: { totalSpent, totalBudget, totalVariance: totalSpent - totalBudget, categories: categoryRows, allocationSpending },
@@ -293,6 +315,43 @@ export const saveSalaryPlan = mutation({
       return existing._id;
     }
     return await ctx.db.insert("monthlySalaryPlans", { userId, ...args });
+  },
+});
+
+export const saveReserveSchedule = mutation({
+  args: { categoryId: v.id("categories"), accountId: v.id("accounts"), amount: v.number(), dayOfMonth: v.number(), isActive: v.boolean() },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const category = await ownedCategory(ctx, userId, args.categoryId);
+    await ownedAccount(ctx, userId, args.accountId);
+    if (category.budgetStyle !== "RESERVE") throw new Error("Choose a reserve category.");
+    if (!Number.isFinite(args.amount) || args.amount <= 0 || args.amount > 1_000_000_000) throw new Error("Enter a valid reserve amount.");
+    if (!Number.isInteger(args.dayOfMonth) || args.dayOfMonth < 1 || args.dayOfMonth > 28) throw new Error("Choose a day from 1 to 28.");
+    const existing = await ctx.db.query("reserveSchedules").withIndex("by_category", (q) => q.eq("categoryId", args.categoryId)).first();
+    const values = { accountId: args.accountId, amount: args.amount, dayOfMonth: args.dayOfMonth, isActive: args.isActive, nextReviewAt: nextMonthlyReview(args.dayOfMonth) };
+    if (existing) {
+      if (existing.userId !== userId) throw new Error("Unauthorized");
+      await ctx.db.patch(existing._id, values);
+      return existing._id;
+    }
+    return await ctx.db.insert("reserveSchedules", { userId, categoryId: args.categoryId, ...values });
+  },
+});
+
+export const addReserveForReview = mutation({
+  args: { scheduleId: v.id("reserveSchedules") },
+  handler: async (ctx, { scheduleId }) => {
+    const userId = await requireUser(ctx);
+    const schedule = await ctx.db.get(scheduleId);
+    if (!schedule || schedule.userId !== userId || !schedule.isActive) throw new Error("Reserve schedule not found.");
+    if (schedule.nextReviewAt > Date.now()) throw new Error("This reserve is not due for review yet.");
+    const [category, account] = await Promise.all([ownedCategory(ctx, userId, schedule.categoryId), ownedAccount(ctx, userId, schedule.accountId)]);
+    const transactionId = await ctx.db.insert("transactions", {
+      userId, date: schedule.nextReviewAt, description: `${category.name} reserve`, amount: -schedule.amount,
+      accountId: account._id, categoryId: category._id, status: "PENDING_REVIEW", confidence: 1,
+    });
+    await ctx.db.patch(scheduleId, { nextReviewAt: nextMonthlyReview(schedule.dayOfMonth, schedule.nextReviewAt + 86_400_000) });
+    return transactionId;
   },
 });
 

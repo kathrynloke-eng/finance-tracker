@@ -68,6 +68,19 @@ export default defineSchema({
     other: v.number(),
   }).index("by_user_month", ["userId", "month"]),
 
+  reserveSchedules: defineTable({
+    userId: v.id("users"),
+    categoryId: v.id("categories"),
+    accountId: v.id("accounts"),
+    amount: v.number(),
+    dayOfMonth: v.number(),
+    isActive: v.boolean(),
+    nextReviewAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_next_review", ["userId", "nextReviewAt"])
+    .index("by_category", ["categoryId"]),
+
   statements: defineTable({
     userId: v.id("users"),
     accountId: v.id("accounts"),
