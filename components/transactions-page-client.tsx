@@ -67,7 +67,7 @@ export function TransactionsPageClient({
 
       <SectionCard
         title="Manage activity"
-        description="Search, create manual entries, update details, or remove transactions."
+        description="Search, create manual entries, edit several rows together, or remove transactions."
       >
         <TransactionManager
           transactions={transactions}

@@ -40,6 +40,7 @@ type Draft = {
   amount: string;
   accountId: string;
   categoryId: string;
+  status: "PENDING_REVIEW" | "CONFIRMED";
 };
 
 function toDateInput(value: string) {
@@ -53,6 +54,7 @@ function emptyDraft(accountId: string): Draft {
     amount: "",
     accountId,
     categoryId: "",
+    status: "CONFIRMED",
   };
 }
 
@@ -63,7 +65,17 @@ function draftFromTransaction(transaction: Transaction): Draft {
     amount: String(transaction.amount),
     accountId: transaction.accountId,
     categoryId: transaction.category?.id ?? "",
+    status: transaction.status === "PENDING_REVIEW" ? "PENDING_REVIEW" : "CONFIRMED",
   };
+}
+
+function draftChanged(transaction: Transaction, draft: Draft) {
+  return draft.date !== toDateInput(transaction.date)
+    || draft.description !== transaction.description
+    || Number(draft.amount) !== transaction.amount
+    || draft.accountId !== transaction.accountId
+    || draft.categoryId !== (transaction.category?.id ?? "")
+    || draft.status !== transaction.status;
 }
 
 export function TransactionManager({
@@ -85,6 +97,8 @@ export function TransactionManager({
   const [pendingDelete, setPendingDelete] = useState<Transaction | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [pendingBulkDelete, setPendingBulkDelete] = useState(false);
+  const [listEditMode, setListEditMode] = useState(false);
+  const [listDrafts, setListDrafts] = useState<Record<string, Draft>>({});
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -108,6 +122,64 @@ export function TransactionManager({
   const selectedCount = filteredIds.filter((id) => selectedIds.has(id)).length;
   const allFilteredSelected =
     filteredIds.length > 0 && selectedCount === filteredIds.length;
+  const changedListIds = useMemo(
+    () => transactions
+      .filter((transaction) => listDrafts[transaction.id] && draftChanged(transaction, listDrafts[transaction.id]))
+      .map((transaction) => transaction.id),
+    [listDrafts, transactions],
+  );
+
+  function startListEdit() {
+    setListDrafts(Object.fromEntries(transactions.map((transaction) => [transaction.id, draftFromTransaction(transaction)])));
+    setListEditMode(true);
+    setEditingId(null);
+    setEditDraft(null);
+    setError("");
+    setMessage("");
+  }
+
+  function updateListDraft(id: string, changes: Partial<Draft>) {
+    setListDrafts((current) => ({
+      ...current,
+      [id]: { ...current[id], ...changes },
+    }));
+  }
+
+  function cancelListEdit() {
+    setListEditMode(false);
+    setListDrafts({});
+    setError("");
+  }
+
+  async function saveListEdits() {
+    const updates = transactions
+      .filter((transaction) => changedListIds.includes(transaction.id))
+      .map((transaction) => ({ id: transaction.id, ...listDrafts[transaction.id] }));
+    if (updates.length === 0) return;
+
+    setBusyId("list-save");
+    setMessage("");
+    setError("");
+    try {
+      const response = await fetch("/api/transactions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ updates: updates.map((update) => ({ ...update, amount: Number(update.amount), categoryId: update.categoryId || null })) }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? "Could not save transaction changes.");
+      const updated = new Map<string, Transaction>((data.transactions ?? []).map((item: Transaction) => [item.id, item]));
+      setTransactions((current) => current.map((transaction) => updated.get(transaction.id) ?? transaction));
+      setListDrafts({});
+      setListEditMode(false);
+      setMessage(`Saved ${updates.length} transaction change${updates.length === 1 ? "" : "s"}.`);
+      onChanged?.();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Could not save transaction changes.");
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   function toggleSelected(id: string) {
     setSelectedIds((current) => {
@@ -368,6 +440,34 @@ export function TransactionManager({
           className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none ring-emerald-500 focus:ring-2 sm:max-w-sm"
         />
         <div className="flex flex-wrap gap-2">
+          {listEditMode ? (
+            <>
+              <button
+                type="button"
+                onClick={() => void saveListEdits()}
+                disabled={changedListIds.length === 0 || busyId === "list-save"}
+                className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {busyId === "list-save" ? "Saving..." : `Save ${changedListIds.length} change${changedListIds.length === 1 ? "" : "s"}`}
+              </button>
+              <button
+                type="button"
+                onClick={cancelListEdit}
+                disabled={busyId === "list-save"}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60"
+              >
+                Cancel list edit
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={startListEdit}
+              className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+            >
+              Edit list
+            </button>
+          )}
           {selectedCount > 0 ? (
             <button
               type="button"
@@ -552,6 +652,12 @@ export function TransactionManager({
           {message}
         </p>
       ) : null}
+
+      {listEditMode ? (
+        <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          Edit any visible transaction, then use the single Save button above. Review status is preserved unless you deliberately change it.
+        </p>
+      ) : null}
       {error ? (
         <p className="rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
           {error}
@@ -582,7 +688,49 @@ export function TransactionManager({
           </div>
 
           {filtered.map((transaction) => {
+            const listDraft = listDrafts[transaction.id];
             const isEditing = editingId === transaction.id && editDraft;
+
+            if (listEditMode && listDraft) {
+              return (
+                <div key={transaction.id} className="grid gap-3 rounded-xl border border-sky-200 bg-sky-50/30 p-4 md:grid-cols-2">
+                  <p className="text-sm font-semibold text-slate-900 md:col-span-2">{transaction.description}</p>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Date</span>
+                    <input type="date" required value={listDraft.date} onChange={(event) => updateListDraft(transaction.id, { date: event.target.value })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2" />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Amount</span>
+                    <input type="text" inputMode="decimal" required value={listDraft.amount} onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateListDraft(transaction.id, { amount: event.target.value })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2" />
+                  </label>
+                  <label className="text-sm md:col-span-2">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Description</span>
+                    <input type="text" required value={listDraft.description} onChange={(event) => updateListDraft(transaction.id, { description: event.target.value })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2" />
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Account</span>
+                    <select required value={listDraft.accountId} onChange={(event) => updateListDraft(transaction.id, { accountId: event.target.value })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2">
+                      {accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Category</span>
+                    <select value={listDraft.categoryId} onChange={(event) => updateListDraft(transaction.id, { categoryId: event.target.value })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2">
+                      <option value="">Uncategorized</option>
+                      {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-sm">
+                    <span className="mb-1 block text-xs font-medium text-slate-500">Status</span>
+                    <select value={listDraft.status} onChange={(event) => updateListDraft(transaction.id, { status: event.target.value as Draft["status"] })} className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none ring-emerald-500 focus:ring-2">
+                      <option value="PENDING_REVIEW">Review</option>
+                      <option value="CONFIRMED">Confirmed</option>
+                    </select>
+                  </label>
+                  {draftChanged(transaction, listDraft) ? <p className="text-xs font-medium text-emerald-700 md:col-span-2">Unsaved change</p> : null}
+                </div>
+              );
+            }
 
             if (isEditing && editDraft) {
               return (

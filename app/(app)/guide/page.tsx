@@ -30,7 +30,7 @@ const steps = [
     number: "04",
     title: "Check and categorise transactions",
     description:
-      "Review imported transactions, confirm the right category, and correct anything that does not look right. Accurate categories make every dashboard view more useful.",
+      "Review imported transactions, confirm the right category, and correct anything that does not look right. Use Edit list to change several rows together, then save them in one step. Accurate categories make every dashboard view more useful.",
     href: "/transactions",
     action: "Review transactions",
   },

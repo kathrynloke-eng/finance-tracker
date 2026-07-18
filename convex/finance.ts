@@ -359,6 +359,21 @@ export const saveReserveSchedule = mutation({
   },
 });
 
+export const deleteReserveSchedule = mutation({
+  args: { categoryId: v.id("categories") },
+  handler: async (ctx, { categoryId }) => {
+    const userId = await requireUser(ctx);
+    await ownedCategory(ctx, userId, categoryId);
+    const schedule = await ctx.db
+      .query("reserveSchedules")
+      .withIndex("by_category", (q) => q.eq("categoryId", categoryId))
+      .first();
+    if (!schedule || schedule.userId !== userId) return false;
+    await ctx.db.delete(schedule._id);
+    return true;
+  },
+});
+
 export const confirmReserveReview = mutation({
   args: { scheduleId: v.id("reserveSchedules"), amount: v.number() },
   handler: async (ctx, { scheduleId, amount }) => {
@@ -395,6 +410,57 @@ export const updateTransaction = mutation({
     if (args.accountId) await ownedAccount(ctx, userId, args.accountId); if (args.categoryId) await ownedCategory(ctx, userId, args.categoryId);
     if (args.amount !== undefined && (!Number.isFinite(args.amount) || args.amount === 0)) throw new Error("Invalid amount.");
     await ctx.db.patch(args.id, { ...(args.date === undefined ? {} : { date: args.date }), ...(args.description === undefined ? {} : { description: normalizedText(args.description, 2, 200, "Description") }), ...(args.amount === undefined ? {} : { amount: args.amount }), ...(args.accountId === undefined ? {} : { accountId: args.accountId }), ...(args.categoryId === undefined ? {} : { categoryId: args.categoryId ?? undefined }), ...(args.status === undefined ? {} : { status: args.status }) });
+  },
+});
+
+export const bulkUpdateTransactions = mutation({
+  args: {
+    updates: v.array(
+      v.object({
+        id: v.id("transactions"),
+        date: v.number(),
+        description: v.string(),
+        amount: v.number(),
+        accountId: v.id("accounts"),
+        categoryId: v.union(v.id("categories"), v.null()),
+        status: transactionStatus,
+      }),
+    ),
+  },
+  handler: async (ctx, { updates }) => {
+    const userId = await requireUser(ctx);
+    if (updates.length === 0 || updates.length > 200) {
+      throw new Error("Select between 1 and 200 transactions to save.");
+    }
+    if (new Set(updates.map((update) => update.id)).size !== updates.length) {
+      throw new Error("Each transaction can only be updated once per save.");
+    }
+
+    for (const update of updates) {
+      const transaction = await ctx.db.get(update.id);
+      if (!transaction || transaction.userId !== userId) {
+        throw new Error("Transaction not found.");
+      }
+      if (!Number.isFinite(update.date) || !Number.isFinite(update.amount) || update.amount === 0) {
+        throw new Error("Enter a valid date and non-zero amount for every transaction.");
+      }
+      await ownedAccount(ctx, userId, update.accountId);
+      if (update.categoryId) await ownedCategory(ctx, userId, update.categoryId);
+    }
+
+    await Promise.all(
+      updates.map((update) =>
+        ctx.db.patch(update.id, {
+          date: update.date,
+          description: normalizedText(update.description, 2, 200, "Description"),
+          amount: update.amount,
+          accountId: update.accountId,
+          categoryId: update.categoryId ?? undefined,
+          status: update.status,
+        }),
+      ),
+    );
+    return updates.length;
   },
 });
 

@@ -8,5 +8,32 @@ const dateValue = (value: string) => { const date = Date.parse(`${value}T00:00:0
 
 export async function GET() { try { const value = await client(); const data = await value.query(api.finance.overview, { month: month() }); return NextResponse.json({ transactions: toClientValue(data.transactions) }); } catch (error) { return errorResponse(error); } }
 export async function POST(request: NextRequest) { try { const body = await request.json(); const value = await client(); const id = await value.mutation(api.finance.createTransaction, { date: dateValue(body.date), description: body.description, amount: Number(body.amount), accountId: body.accountId, ...(body.categoryId ? { categoryId: body.categoryId } : {}) }); const data = await value.query(api.finance.overview, { month: month() }); return NextResponse.json({ transaction: toClientValue(data.transactions.find((item) => item._id === id)) }, { status: 201 }); } catch (error) { return errorResponse(error); } }
-export async function PATCH(request: NextRequest) { try { const body = await request.json(); const value = await client(); await value.mutation(api.finance.updateTransaction, { id: body.id, ...(body.date === undefined ? {} : { date: dateValue(body.date) }), ...(body.description === undefined ? {} : { description: body.description }), ...(body.amount === undefined ? {} : { amount: Number(body.amount) }), ...(body.accountId === undefined ? {} : { accountId: body.accountId }), ...(body.categoryId === undefined ? {} : { categoryId: body.categoryId || null }), ...(body.status === undefined ? {} : { status: body.status }) }); const data = await value.query(api.finance.overview, { month: month() }); return NextResponse.json({ transaction: toClientValue(data.transactions.find((item) => item._id === body.id)) }); } catch (error) { return errorResponse(error); } }
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const value = await client();
+    if (Array.isArray(body.updates)) {
+      const ids = body.updates.map((update: { id: string }) => update.id);
+      await value.mutation(api.finance.bulkUpdateTransactions, {
+        updates: body.updates.map((update: { id: string; date: string; description: string; amount: number; accountId: string; categoryId?: string | null; status: "PENDING_REVIEW" | "CONFIRMED" }) => ({
+          id: update.id,
+          date: dateValue(update.date),
+          description: update.description,
+          amount: Number(update.amount),
+          accountId: update.accountId,
+          categoryId: update.categoryId || null,
+          status: update.status,
+        })),
+      });
+      const data = await value.query(api.finance.overview, { month: month() });
+      return NextResponse.json({
+        transactions: toClientValue(data.transactions.filter((item) => ids.includes(String(item._id)))),
+      });
+    }
+
+    await value.mutation(api.finance.updateTransaction, { id: body.id, ...(body.date === undefined ? {} : { date: dateValue(body.date) }), ...(body.description === undefined ? {} : { description: body.description }), ...(body.amount === undefined ? {} : { amount: Number(body.amount) }), ...(body.accountId === undefined ? {} : { accountId: body.accountId }), ...(body.categoryId === undefined ? {} : { categoryId: body.categoryId || null }), ...(body.status === undefined ? {} : { status: body.status }) });
+    const data = await value.query(api.finance.overview, { month: month() });
+    return NextResponse.json({ transaction: toClientValue(data.transactions.find((item) => item._id === body.id)) });
+  } catch (error) { return errorResponse(error); }
+}
 export async function DELETE(request: NextRequest) { try { const body = await request.json().catch(() => ({})); const ids = Array.isArray(body.ids) ? body.ids : request.nextUrl.searchParams.get("id") ? [request.nextUrl.searchParams.get("id")] : []; const value = await client(); const deletedCount = await value.mutation(api.finance.deleteTransactions, { ids }); return NextResponse.json({ deletedCount }); } catch (error) { return errorResponse(error); } }
