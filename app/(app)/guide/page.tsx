@@ -14,7 +14,7 @@ const steps = [
     number: "02",
     title: "Create monthly budgets and reserves",
     description:
-      "Create spending categories and give each a monthly target. Use the Reserve type for money you want to set aside for a future expense or goal.",
+      "Create spending categories and give each a monthly target. Use the Reserve type for future expenses or goals; its monthly target becomes the suggested amount when you review a reserve.",
     href: "/budgets",
     action: "Set budgets",
   },
@@ -38,7 +38,7 @@ const steps = [
     number: "05",
     title: "Plan your income",
     description:
-      "Use the Plan page to allocate monthly income across essentials, lifestyle, savings, investments, debt repayment, giving, and other priorities.",
+      "Use the Plan page as a standalone monthly salary plan. Rename allocation options to suit your own goals, set amounts, and save a separate plan for each month.",
     href: "/allocation",
     action: "Open your plan",
   },
@@ -84,6 +84,7 @@ export default function GuidePage() {
               <li><span className="font-semibold text-slate-900">View month:</span> choose an earlier month to review your history.</li>
               <li><span className="font-semibold text-slate-900">Budget health:</span> compares everyday spending with your monthly targets.</li>
               <li><span className="font-semibold text-slate-900">Reserve:</span> tracks money set aside separately from regular spending.</li>
+              <li><span className="font-semibold text-slate-900">Reserve review due:</span> appears on the chosen day when a scheduled reserve needs your approval.</li>
               <li><span className="font-semibold text-slate-900">Spending by category:</span> helps you spot where your money is going.</li>
             </ul>
             <Link href="/" className="mt-5 inline-flex rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800">
@@ -91,9 +92,28 @@ export default function GuidePage() {
             </Link>
           </SectionCard>
 
+          <SectionCard title="Set up reserve reviews" description="A review-first way to record money set aside.">
+            <ol className="space-y-2 text-sm leading-6 text-slate-600">
+              <li><span className="font-semibold text-slate-900">1.</span> Create a Reserve category and set its monthly budget target.</li>
+              <li><span className="font-semibold text-slate-900">2.</span> In Budgets, choose the account and the monthly review day. Day 1 means the first day of the month; Day 28 is the latest available day so every month works consistently.</li>
+              <li><span className="font-semibold text-slate-900">3.</span> When the Dashboard prompt appears, its amount is pre-filled from that month’s reserve budget. Adjust it if needed, then select <span className="font-semibold text-slate-900">Confirm &amp; add</span>.</li>
+            </ol>
+            <p className="mt-3 text-sm leading-6 text-slate-600">Nothing is added automatically. Confirming from the Dashboard creates the final reserve transaction immediately.</p>
+            <Link href="/budgets" className="mt-5 inline-block text-sm font-semibold text-slate-800 underline decoration-lime-300 decoration-2 underline-offset-4 hover:text-slate-950">
+              Set reserve reviews →
+            </Link>
+          </SectionCard>
+
+          <SectionCard title="Your Plan is separate" description="Use it for intention, not spending reconciliation.">
+            <p className="text-sm leading-6 text-slate-600">Plan does not read transaction spending or budget activity. It is a private monthly salary allocation worksheet. Edit the option names and amounts to reflect the way you manage your money.</p>
+            <Link href="/allocation" className="mt-5 inline-block text-sm font-semibold text-slate-800 underline decoration-lime-300 decoration-2 underline-offset-4 hover:text-slate-950">
+              Open Plan →
+            </Link>
+          </SectionCard>
+
           <SectionCard title="Privacy reminder" description="A few good habits for shared use.">
             <p className="text-sm leading-6 text-slate-600">
-              Each person sees only their own data. Do not share your password, and sign out when using a shared computer. The app keeps imported transaction data, but deletes the raw statement file after parsing.
+              Each person sees only their own data. Do not share your password, and sign out when using a shared computer. The app keeps imported transaction data needed for tracking, but deletes the raw statement file and extracted text after parsing. Imported statement names are also redacted.
             </p>
           </SectionCard>
         </div>
