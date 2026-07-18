@@ -128,6 +128,7 @@ export const overview = query({
       })),
       dueReserveSchedules: reserveSchedules.filter((schedule) => schedule.isActive && schedule.nextReviewAt <= Date.now()).map((schedule) => ({
         ...schedule,
+        suggestedAmount: targets.has(schedule.categoryId) ? targets.get(schedule.categoryId)! : schedule.amount,
         category: byCategory.get(schedule.categoryId) ?? null,
         account: byAccount.get(schedule.accountId) ?? null,
       })),
